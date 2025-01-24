@@ -19,7 +19,6 @@
 #include <random>
 #include <shared_mutex>
 #include <vector>
-#include "common/macros.h"
 
 namespace bustub {
 
@@ -45,7 +44,8 @@ class SkipList {
 
  public:
   /**  @brief Constructs an empty skip list with an optional custom comparison function. */
-  explicit SkipList(const Compare &compare = Compare{}) { UNIMPLEMENTED("TODO(P0): Add implementation."); }
+  explicit SkipList(const Compare &compare = Compare{})
+      : compare_(compare), header_(std::make_shared<SkipNode>(MaxHeight, std::numeric_limits<K>::min())) {}
 
   /**
    * @brief Destructs the skip list.
@@ -86,6 +86,48 @@ class SkipList {
   // - Finds the node that is no less than the given key.
   // - Inserts a new node with the given key.
   // - Adjust height and previous pointers.
+
+  /**
+   * @brief Helper function to check if two keys are equal.
+   *
+   * @param key1 the first key.
+   * @param key2 the second key.
+   * @return true if the keys are equal, false otherwise.
+   */
+  auto KeyEqual(const K &key1, const K &key2) -> bool;
+
+  /** @brief Type alias for update vector to improve readability */
+  using UpdateVector = std::vector<std::shared_ptr<SkipNode>>;
+
+  /**
+   * @brief Finds the node that is no less than the given key.
+   *
+   * @param key the key to search for.
+   * @param update optional vector to store the nodes that we need to update.
+   *               If provided, it will be filled with update nodes.
+   * @return the node that is no less than the given key.
+   */
+  auto FindNoLessThan(const K &key, UpdateVector *update = nullptr) -> std::shared_ptr<SkipNode>;
+
+  /**
+   * @brief Inserts a new node with the given key.
+   *
+   * @param key the key to insert.
+   * @param node the node that is no less than the given key.
+   * @param update the update vector to store the nodes that we need to update.
+   * @return true if the node is inserted, false otherwise.
+   */
+  auto InsertNode(const K &key, std::shared_ptr<SkipNode> node, UpdateVector *update) -> bool;
+
+  /**
+   * @brief Erases the node with the given key.
+   *
+   * @param key the key to erase.
+   * @param node the node no less than the given key.
+   * @param update the update vector to store the nodes that we need to update.
+   * @return true if the node is erased, false otherwise.
+   */
+  auto EraseNode(const K &key, std::shared_ptr<SkipNode> node, UpdateVector *update) -> bool;
 
   /** @brief Lowest level index for the skip list. */
   static constexpr size_t LOWEST_LEVEL = 0;
@@ -128,7 +170,7 @@ SKIPLIST_TEMPLATE_ARGUMENTS struct SkipList<K, Compare, MaxHeight, Seed>::SkipNo
    * @param height The number of links the node will have
    * @param key The key to store in the node (default empty for header)
    */
-  explicit SkipNode(size_t height, K key = K{}) { UNIMPLEMENTED("TODO(P0): Add implementation."); }
+  explicit SkipNode(size_t height, K key = K{}) : links_(height), key_(std::move(key)) {}
 
   auto Height() const -> size_t;
   auto Next(size_t level) const -> std::shared_ptr<SkipNode>;
