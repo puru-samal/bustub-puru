@@ -15,7 +15,7 @@
 #include <cstddef>
 #include <functional>
 #include <memory>
-#include <mutex>
+#include <mutex>  // NOLINT
 #include <string>
 #include <vector>
 #include "fmt/core.h"
