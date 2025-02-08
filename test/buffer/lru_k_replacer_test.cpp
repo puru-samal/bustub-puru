@@ -44,6 +44,7 @@ TEST(LRUKReplacerTest, SampleTest) {
   lru_replacer.RecordAccess(4);
   lru_replacer.RecordAccess(5);
   lru_replacer.RecordAccess(6);
+
   lru_replacer.SetEvictable(1, true);
   lru_replacer.SetEvictable(2, true);
   lru_replacer.SetEvictable(3, true);
@@ -187,10 +188,9 @@ TEST(LRUKReplacerTest, BasicFunctionalityTest) {
   lru_replacer.SetEvictable(2, true);
   lru_replacer.SetEvictable(3, true);
 
-  // 1 backward k-distance = 17 - 13 = 4, oldest timestamp = 13
-  // 2 backward k-distance = 16 - 15 = 1, oldest timestamp = 15
-  // 3 backward k-distance = 14 - 10 = 4, oldest timestamp = 10
-  lru_replacer.PrintState();
+  // 1 backward k-distance = 18 - 13 = 5, oldest timestamp = 13
+  // 2 backward k-distance = 18 - 15 = 3, oldest timestamp = 15
+  // 3 backward k-distance = 18 - 10 = 8, oldest timestamp = 10
 
   // Frame 3 should be evicted first due to the oldest timestamp as the tie-breaker
   ASSERT_EQ(3, lru_replacer.Evict());

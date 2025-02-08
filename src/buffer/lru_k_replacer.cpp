@@ -37,36 +37,6 @@ void LRUKNode::RecordAccess(size_t timestamp) {
 }
 
 /**
- * @brief Get the backward k-distance of the frame or numeric_limits<size_t>::max() if the frame has less than k
- * references.
- * @return the backward k-distance of the frame
- */
-auto LRUKNode::GetBackwardKDistance() const -> size_t {
-  if (GetAccessCount() < k_) {
-    return std::numeric_limits<size_t>::max();
-  }
-  size_t last_idx = (write_ptr_ + k_ - 1) % k_;
-  size_t first_idx = write_ptr_;
-  return history_[last_idx] - history_[first_idx];
-}
-
-/**
- * @brief Get the last timestamp of the frame.
- * @return the last timestamp of the frame
- */
-auto LRUKNode::GetLastTimestamp() const -> size_t {
-  BUSTUB_ASSERT(!history_.empty(), "Frame has no timestamps");
-  size_t last_idx = (write_ptr_ + k_ - 1) % k_;
-  return history_[last_idx];
-}
-
-/**
- * @brief Get the access count of the frame.
- * @return the access count of the frame
- */
-auto LRUKNode::GetAccessCount() const -> size_t { return access_count_; }
-
-/**
  * @brief Check if the frame is evictable.
  * @return true if the frame is evictable, false otherwise
  */
@@ -79,10 +49,34 @@ auto LRUKNode::IsEvictable() const -> bool { return is_evictable_; }
 void LRUKNode::SetEvictable(bool is_evictable) { is_evictable_ = is_evictable; }
 
 /**
+ * @brief Get the last timestamp of the frame.
+ * @return the last timestamp of the frame
+ */
+auto LRUKNode::GetEarliestTimestamp() const -> size_t {
+  BUSTUB_ASSERT(!history_.empty(), "Frame has no timestamps");
+  if (GetAccessCount() < k_) {
+    return history_[0];
+  }
+  return history_[write_ptr_];
+}
+
+/**
+ * @brief Get the access count of the frame.
+ * @return the access count of the frame
+ */
+auto LRUKNode::GetAccessCount() const -> size_t { return access_count_; }
+
+/**
  * @brief Get the frame id of the node.
  * @return the frame id of the node
  */
 auto LRUKNode::GetFrameId() const -> frame_id_t { return fid_; }
+
+/**
+ * @brief Get the k of the node.
+ * @return the k of the node
+ */
+auto LRUKNode::GetK() const -> size_t { return k_; }
 
 /**
  * @brief Print the node.
@@ -92,8 +86,8 @@ void LRUKNode::Print() const {
   for (const auto &timestamp : history_) {
     printf("%zu ", timestamp);
   }
-  printf("] evictable=%s k=%zu backward_k_dist=%zu access_count=%zu\n", is_evictable_ ? "true" : "false", k_,
-         GetBackwardKDistance(), GetAccessCount());
+  printf("] evictable=%s k=%zu oldest_timestamp=%zu access_count=%zu\n", is_evictable_ ? "true" : "false", k_,
+         GetEarliestTimestamp(), GetAccessCount());
 }
 
 /**
@@ -106,28 +100,28 @@ auto LRUKReplacer::EvictableFrameComparator::operator()(const frame_id_t &a, con
   const auto &node_a = node_store_.at(a);
   const auto &node_b = node_store_.at(b);
 
-  auto dist_a = node_a.GetBackwardKDistance();
-  auto dist_b = node_b.GetBackwardKDistance();
+  // Compare whether nodes have reached k references
+  bool a_has_k = node_a.GetAccessCount() >= k_;
+  bool b_has_k = node_b.GetAccessCount() >= k_;
 
-  if (dist_a == dist_b) {
-    return node_a.GetLastTimestamp() < node_b.GetLastTimestamp();
+  if (a_has_k != b_has_k) {
+    // Prioritize evicting nodes with fewer than k references
+    return !a_has_k;
   }
-  return dist_a > dist_b;
+
+  // If both nodes are in the same category (both have/don't have k refs),
+  // evict the one with earlier last access
+  return node_a.GetEarliestTimestamp() < node_b.GetEarliestTimestamp();
 }
 
 /**
- *
- * TODO(P1): Add implementation
- *
- * @brief a new LRUKReplacer.
+ * @brief Constructor for LRUKReplacer.
  * @param num_frames the maximum number of frames the LRUReplacer will be required to store
  */
 LRUKReplacer::LRUKReplacer(size_t num_frames, size_t k)
-    : evictable_frames_(EvictableFrameComparator(node_store_)), replacer_size_(num_frames), k_(k) {}
+    : evictable_frames_(EvictableFrameComparator(node_store_, k)), replacer_size_(num_frames), k_(k) {}
 
 /**
- * TODO(P1): Add implementation
- *
  * @brief Find the frame with largest backward k-distance and evict that frame. Only frames
  * that are marked as 'evictable' are candidates for eviction.
  *
@@ -173,8 +167,6 @@ auto LRUKReplacer::Evict() -> std::optional<frame_id_t> {
 }
 
 /**
- * TODO(P1): Add implementation
- *
  * @brief Record the event that the given frame id is accessed at current timestamp.
  * Create a new entry for access history if frame id has not been seen before.
  *
@@ -220,8 +212,6 @@ void LRUKReplacer::RecordAccess(frame_id_t frame_id, [[maybe_unused]] AccessType
 }
 
 /**
- * TODO(P1): Add implementation
- *
  * @brief Toggle whether a frame is evictable or non-evictable. This function also
  * controls replacer's size. Note that size is equal to number of evictable entries.
  *
@@ -267,6 +257,7 @@ void LRUKReplacer::SetEvictable(frame_id_t frame_id, bool set_evictable) {
     // Insert the frame into the evictable set
     BUSTUB_ASSERT(evictable_frames_.find(it->first) == evictable_frames_.end(),
                   "Frame is not evictable but in evictable set");
+
     curr_size_++;
     evictable_frames_.insert(it->first);
   } else {
@@ -284,8 +275,6 @@ void LRUKReplacer::SetEvictable(frame_id_t frame_id, bool set_evictable) {
 }
 
 /**
- * TODO(P1): Add implementation
- *
  * @brief Remove an evictable frame from replacer, along with its access history.
  * This function should also decrement replacer's size if removal is successful.
  *
@@ -333,8 +322,6 @@ void LRUKReplacer::Remove(frame_id_t frame_id) {
 }
 
 /**
- * TODO(P1): Add implementation
- *
  * @brief Return replacer's size, which tracks the number of evictable frames.
  *
  * @return size_t

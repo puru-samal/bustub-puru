@@ -29,25 +29,25 @@ class LRUKNode {
   // Constructor
   explicit LRUKNode(size_t k, frame_id_t fid);
   void RecordAccess(size_t timestamp);
-  auto GetBackwardKDistance() const -> size_t;
-  auto GetLastTimestamp() const -> size_t;
-  auto GetAccessCount() const -> size_t;
   auto IsEvictable() const -> bool;
   void SetEvictable(bool is_evictable);
+  auto GetEarliestTimestamp() const -> size_t;
+  auto GetAccessCount() const -> size_t;
   auto GetFrameId() const -> frame_id_t;
+  auto GetK() const -> size_t;
   void Print() const;
 
  private:
   /** History of last seen K timestamps of this page. */
   /** Implemented as a circular buffer. */
   /** Oldest timestamp is at write_ptr_ once the buffer is full. */
-  /** Newest timestamp is at (write_ptr_ + k_ - 1) % k_. */
   std::vector<size_t> history_;
   size_t write_ptr_{0};
   size_t access_count_{0};
   size_t k_;
   frame_id_t fid_;
   bool is_evictable_{false};
+  const size_t inf_ = std::numeric_limits<size_t>::max();
 };
 
 /**
@@ -90,8 +90,9 @@ class LRUKReplacer {
   // Comparator for the evictable frames to be used to order the frames in the set
   struct EvictableFrameComparator {
     const std::unordered_map<frame_id_t, LRUKNode> &node_store_;
-    explicit EvictableFrameComparator(const std::unordered_map<frame_id_t, LRUKNode> &node_store)
-        : node_store_(node_store) {}
+    const size_t k_;
+    explicit EvictableFrameComparator(const std::unordered_map<frame_id_t, LRUKNode> &node_store, size_t k)
+        : node_store_(node_store), k_(k) {}
     auto operator()(const frame_id_t &a, const frame_id_t &b) const -> bool;
   };
   std::unordered_map<frame_id_t, LRUKNode> node_store_;

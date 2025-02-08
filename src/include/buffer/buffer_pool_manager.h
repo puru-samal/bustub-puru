@@ -68,6 +68,7 @@ class FrameHeader {
   auto GetData() const -> const char *;
   auto GetDataMut() -> char *;
   void Reset();
+  auto IsFree() const -> bool;
 
   /** @brief The frame ID / index of the frame this header represents. */
   const frame_id_t frame_id_;
@@ -95,6 +96,7 @@ class FrameHeader {
    * currently storing. This might allow you to skip searching for the corresponding (page ID, frame ID) pair somewhere
    * else in the buffer pool manager...
    */
+  page_id_t page_id_{INVALID_PAGE_ID};
 };
 
 /**
@@ -137,7 +139,7 @@ class BufferPoolManager {
   /**
    * @brief The latch protecting the buffer pool's inner data structures.
    *
-   * TODO(P1) We recommend replacing this comment with details about what this latch actually protects.
+   * Latch protects access to frames, page table, free frames, replacer, disk scheduler, and log manager.
    */
   std::shared_ptr<std::mutex> bpm_latch_;
 
@@ -172,5 +174,10 @@ class BufferPoolManager {
    * stored inside of it. Additionally, you may also want to implement a helper function that returns either a shared
    * pointer to a `FrameHeader` that already has a page's data stored inside of it, or an index to said `FrameHeader`.
    */
+  auto LoadPageIntoFrame(page_id_t page_id, const std::shared_ptr<FrameHeader> &frame) -> bool;
+  auto WriteFrameToDisk(const std::shared_ptr<FrameHeader> &frame) -> bool;
+  auto AllocateFromFreeList(page_id_t page_id) -> std::optional<frame_id_t>;
+  auto EvictAndAllocateFrame(page_id_t page_id) -> std::optional<frame_id_t>;
+  auto GetFrame(page_id_t page_id) -> std::optional<frame_id_t>;
 };
 }  // namespace bustub

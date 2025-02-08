@@ -23,7 +23,7 @@ namespace bustub {
 const size_t FRAMES = 10;
 const size_t K_DIST = 2;
 
-TEST(PageGuardTest, DISABLED_DropTest) {
+TEST(PageGuardTest, DropTest) {
   auto disk_manager = std::make_shared<DiskManagerUnlimitedMemory>();
   auto bpm = std::make_shared<BufferPoolManager>(FRAMES, disk_manager.get(), K_DIST);
 
@@ -37,7 +37,6 @@ TEST(PageGuardTest, DISABLED_DropTest) {
     // A drop should unpin the page.
     page0.Drop();
     ASSERT_EQ(0, bpm->GetPinCount(pid0));
-
     // Another drop should have no effect.
     page0.Drop();
     ASSERT_EQ(0, bpm->GetPinCount(pid0));
@@ -112,7 +111,7 @@ TEST(PageGuardTest, DISABLED_DropTest) {
   disk_manager->ShutDown();
 }
 
-TEST(PageGuardTest, DISABLED_MoveTest) {
+TEST(PageGuardTest, MoveTest) {
   auto disk_manager = std::make_shared<DiskManagerUnlimitedMemory>();
   auto bpm = std::make_shared<BufferPoolManager>(FRAMES, disk_manager.get(), K_DIST);
 
