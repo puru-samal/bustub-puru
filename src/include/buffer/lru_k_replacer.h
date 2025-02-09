@@ -28,9 +28,10 @@ class LRUKNode {
  public:
   // Constructor
   explicit LRUKNode(size_t k, frame_id_t fid);
-  void RecordAccess(size_t timestamp);
+  void RecordAccess(size_t timestamp, AccessType access_type = AccessType::Unknown);
   auto IsEvictable() const -> bool;
   void SetEvictable(bool is_evictable);
+  auto GetLastAccessType() const -> AccessType;
   auto GetEarliestTimestamp() const -> size_t;
   auto GetAccessCount() const -> size_t;
   auto GetFrameId() const -> frame_id_t;
@@ -48,6 +49,7 @@ class LRUKNode {
   frame_id_t fid_;
   bool is_evictable_{false};
   const size_t inf_ = std::numeric_limits<size_t>::max();
+  AccessType last_access_type_{AccessType::Unknown};
 };
 
 /**

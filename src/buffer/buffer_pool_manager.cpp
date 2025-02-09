@@ -250,7 +250,7 @@ auto BufferPoolManager::CheckedWritePage(page_id_t page_id, AccessType access_ty
     // Set to be non-evictable
     // Update pin count
     // Set dirty bit
-    replacer_->RecordAccess(frame_id.value());
+    replacer_->RecordAccess(frame_id.value(), access_type);
     replacer_->SetEvictable(frame_id.value(), false);
     frame->pin_count_.fetch_add(1);
     frame->is_dirty_ = true;
@@ -300,7 +300,7 @@ auto BufferPoolManager::CheckedReadPage(page_id_t page_id, AccessType access_typ
     // Set to be non-evictable
     // Update pin count
     // Set dirty bit to false
-    replacer_->RecordAccess(frame_id.value());
+    replacer_->RecordAccess(frame_id.value(), access_type);
     replacer_->SetEvictable(frame_id.value(), false);
     frame->pin_count_.fetch_add(1);
   }

@@ -27,13 +27,14 @@ LRUKNode::LRUKNode(size_t k, frame_id_t fid) : k_(k), fid_(fid) { history_.resiz
  * @brief Record the access of a frame.
  * @param timestamp the timestamp of the access
  */
-void LRUKNode::RecordAccess(size_t timestamp) {
+void LRUKNode::RecordAccess(size_t timestamp, [[maybe_unused]] AccessType access_type) {
   // Update the history
   // Update the write pointer
   // Increment the access count
   history_[write_ptr_] = timestamp;
   write_ptr_ = (write_ptr_ + 1) % k_;
   access_count_++;
+  last_access_type_ = access_type;
 }
 
 /**
@@ -47,6 +48,12 @@ auto LRUKNode::IsEvictable() const -> bool { return is_evictable_; }
  * @param is_evictable the new evictable status of the frame
  */
 void LRUKNode::SetEvictable(bool is_evictable) { is_evictable_ = is_evictable; }
+
+/**
+ * @brief Get the last access type of the frame.
+ * @return the last access type of the frame
+ */
+auto LRUKNode::GetLastAccessType() const -> AccessType { return last_access_type_; }
 
 /**
  * @brief Get the last timestamp of the frame.
@@ -99,6 +106,14 @@ void LRUKNode::Print() const {
 auto LRUKReplacer::EvictableFrameComparator::operator()(const frame_id_t &a, const frame_id_t &b) const -> bool {
   const auto &node_a = node_store_.at(a);
   const auto &node_b = node_store_.at(b);
+
+  // Prioritize eviction of pages accessed primarily by scan operations
+  if (node_a.GetLastAccessType() == AccessType::Scan && node_b.GetLastAccessType() != AccessType::Scan) {
+    return true;
+  }
+  if (node_b.GetLastAccessType() == AccessType::Scan && node_a.GetLastAccessType() != AccessType::Scan) {
+    return false;
+  }
 
   // Compare whether nodes have reached k references
   bool a_has_k = node_a.GetAccessCount() >= k_;
@@ -199,7 +214,7 @@ void LRUKReplacer::RecordAccess(frame_id_t frame_id, [[maybe_unused]] AccessType
   }
 
   // Record the access
-  it->second.RecordAccess(current_timestamp_);
+  it->second.RecordAccess(current_timestamp_, access_type);
 
   // If the frame is evictable, insert it into the evictable set
   // This is to ensure that the set is reordered correctly
