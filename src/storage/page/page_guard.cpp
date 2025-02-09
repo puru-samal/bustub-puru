@@ -147,7 +147,6 @@ void ReadPageGuard::Flush() {
                                             .page_id_ = frame_->page_id_,
                                             .callback_ = std::move(promise)});
       future.get();
-      frame_->is_dirty_ = false;
     }
   }
 }
@@ -333,7 +332,6 @@ void WritePageGuard::Flush() {
       disk_scheduler_->Schedule(DiskRequest{
           .is_write_ = true, .data_ = frame_->GetDataMut(), .page_id_ = page_id_, .callback_ = std::move(promise)});
       future.get();
-      frame_->is_dirty_ = false;
     }
   }
 }

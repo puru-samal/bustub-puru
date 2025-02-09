@@ -179,7 +179,7 @@ auto BufferPoolManager::DeletePage(page_id_t page_id) -> bool {
 
   // Write dirty page to disk
   if (frame->is_dirty_) {
-    WriteFrameToDisk(frame);
+    WriteDirtyFrameToDisk(frame);
   }
 
   // Reset and reuse the frame
@@ -378,18 +378,32 @@ auto BufferPoolManager::ReadPage(page_id_t page_id, AccessType access_type) -> R
  * @return `false` if the page could not be found in the page table, otherwise `true`.
  */
 auto BufferPoolManager::FlushPageUnsafe(page_id_t page_id) -> bool {
-  // Check if page is in memory
-  auto it = page_table_.find(page_id);
-  if (it == page_table_.end()) {
-    return false;
+  char *data = nullptr;
+  bool is_dirty = false;
+
+  {
+    std::scoped_lock latch(*bpm_latch_);
+    // Check if page is in memory
+    auto it = page_table_.find(page_id);
+    if (it == page_table_.end()) {
+      return false;
+    }
+
+    frame_id_t frame_id = it->second;
+    auto frame = frames_[frame_id];
+    data = frame->GetDataMut();
+    is_dirty = frame->is_dirty_;
   }
 
-  frame_id_t frame_id = it->second;
-  auto frame = frames_[frame_id];
-  // Flush page to disk
-  if (frame->is_dirty_) {
-    WriteFrameToDisk(frame);
+  // Flush page to disk outside the critical section
+  if (is_dirty) {
+    auto promise = disk_scheduler_->CreatePromise();
+    auto future = promise.get_future();
+    disk_scheduler_->Schedule(
+        DiskRequest{.is_write_ = true, .data_ = data, .page_id_ = page_id, .callback_ = std::move(promise)});
+    future.get();
   }
+
   return true;
 }
 
@@ -423,7 +437,7 @@ auto BufferPoolManager::FlushPage(page_id_t page_id) -> bool {
   auto frame = frames_[frame_id];
   // Flush page to disk
   if (frame->is_dirty_) {
-    WriteFrameToDisk(frame);
+    WriteDirtyFrameToDisk(frame);
   }
   return true;
 }
@@ -442,8 +456,25 @@ auto BufferPoolManager::FlushPage(page_id_t page_id) -> bool {
  * TODO(P1): Add implementation
  */
 void BufferPoolManager::FlushAllPagesUnsafe() {
-  for (auto &[page_id, frame_id] : page_table_) {
-    FlushPageUnsafe(page_id);
+  std::vector<std::pair<char *, page_id_t>> pages_to_flush;
+  {
+    // Only hold latch while collecting dirty pages
+    std::scoped_lock latch(*bpm_latch_);
+    for (const auto &[page_id, frame_id] : page_table_) {
+      auto frame = frames_[frame_id];
+      if (frame->is_dirty_) {
+        pages_to_flush.emplace_back(frame->GetDataMut(), page_id);
+      }
+    }
+  }
+
+  // Perform disk writes without holding the latch
+  for (const auto &[data, page_id] : pages_to_flush) {
+    auto promise = disk_scheduler_->CreatePromise();
+    auto future = promise.get_future();
+    disk_scheduler_->Schedule(
+        DiskRequest{.is_write_ = true, .data_ = data, .page_id_ = page_id, .callback_ = std::move(promise)});
+    future.get();
   }
 }
 
@@ -461,7 +492,12 @@ void BufferPoolManager::FlushAllPagesUnsafe() {
  */
 void BufferPoolManager::FlushAllPages() {
   std::scoped_lock latch(*bpm_latch_);
-  FlushAllPagesUnsafe();
+  for (auto &[page_id, frame_id] : page_table_) {
+    auto frame = frames_[frame_id];
+    if (frame->is_dirty_) {
+      WriteDirtyFrameToDisk(frame);
+    }
+  }
 }
 
 /**
@@ -529,7 +565,7 @@ auto BufferPoolManager::LoadPageIntoFrame(page_id_t page_id, const std::shared_p
  *
  * @param frame The frame to write to disk.
  */
-auto BufferPoolManager::WriteFrameToDisk(const std::shared_ptr<FrameHeader> &frame) -> bool {
+auto BufferPoolManager::WriteDirtyFrameToDisk(const std::shared_ptr<FrameHeader> &frame) -> bool {
   BUSTUB_ASSERT(frame->is_dirty_, "Frame must be dirty to write to disk");
   auto promise = disk_scheduler_->CreatePromise();
   auto future = promise.get_future();
@@ -594,7 +630,7 @@ auto BufferPoolManager::EvictAndAllocateFrame(page_id_t page_id) -> std::optiona
 
   // Flush dirty page if necessary
   if (frame->is_dirty_) {
-    WriteFrameToDisk(frame);
+    WriteDirtyFrameToDisk(frame);
   }
 
   // Reset and reuse the frame

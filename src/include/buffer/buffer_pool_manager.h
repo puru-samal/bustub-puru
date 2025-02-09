@@ -175,7 +175,7 @@ class BufferPoolManager {
    * pointer to a `FrameHeader` that already has a page's data stored inside of it, or an index to said `FrameHeader`.
    */
   auto LoadPageIntoFrame(page_id_t page_id, const std::shared_ptr<FrameHeader> &frame) -> bool;
-  auto WriteFrameToDisk(const std::shared_ptr<FrameHeader> &frame) -> bool;
+  auto WriteDirtyFrameToDisk(const std::shared_ptr<FrameHeader> &frame) -> bool;
   auto AllocateFromFreeList(page_id_t page_id) -> std::optional<frame_id_t>;
   auto EvictAndAllocateFrame(page_id_t page_id) -> std::optional<frame_id_t>;
   auto GetFrame(page_id_t page_id) -> std::optional<frame_id_t>;
