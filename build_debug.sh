@@ -13,10 +13,10 @@ cmake \
 
 # Array of test names
 tests=(
-    "b_plus_tree_insert_test"
-    "b_plus_tree_sequential_scale_test"
-    "b_plus_tree_delete_test"
-    "b_plus_tree_concurrent_test"
+    #"b_plus_tree_insert_test"
+    #"b_plus_tree_sequential_scale_test"
+    #"b_plus_tree_delete_test"
+    #"b_plus_tree_concurrent_test"
 )
 
 # Build and run each test

@@ -48,5 +48,11 @@ class UpdateExecutor : public AbstractExecutor {
 
   /** The child executor to obtain value from */
   std::unique_ptr<AbstractExecutor> child_executor_;
+
+  /** The index infos */
+  std::vector<std::shared_ptr<IndexInfo>> index_infos_;
+
+  /** Whether the update has been executed */
+  bool is_updated_;
 };
 }  // namespace bustub
