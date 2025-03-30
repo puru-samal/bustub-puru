@@ -60,6 +60,7 @@ class ReadPageGuard {
   auto As() const -> const T * {
     return reinterpret_cast<const T *>(GetData());
   }
+  auto IsValid() const -> bool;
   auto IsDirty() const -> bool;
   void Flush();
   void Drop();

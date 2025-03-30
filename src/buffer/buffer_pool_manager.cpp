@@ -601,7 +601,7 @@ auto BufferPoolManager::AllocateFromFreeList(page_id_t page_id) -> std::optional
   BUSTUB_ASSERT(!frame->IsFree(), "Frame must not be free after loading");
 
   // Insert page table entry
-  auto [_, inserted] = page_table_.insert({page_id, frame_id});
+  [[maybe_unused]] auto [_, inserted] = page_table_.insert({page_id, frame_id});
   BUSTUB_ASSERT(inserted, "Duplicate page table entry");
   BUSTUB_ASSERT(page_table_.size() + free_frames_.size() == num_frames_,
                 "Page table size + free frames size must be equal to number of frames");
@@ -639,7 +639,7 @@ auto BufferPoolManager::EvictAndAllocateFrame(page_id_t page_id) -> std::optiona
   BUSTUB_ASSERT(!frame->IsFree(), "Frame must not be free after loading");
   BUSTUB_ASSERT(frame->page_id_ == page_id, "Frame must have correct page ID");
 
-  auto [_, inserted] = page_table_.insert({page_id, frame_id.value()});
+  [[maybe_unused]] auto [_, inserted] = page_table_.insert({page_id, frame_id.value()});
   BUSTUB_ASSERT(inserted, "Duplicate page table entry");
   BUSTUB_ASSERT(page_table_.size() + free_frames_.size() == num_frames_,
                 "Page table size + free frames size must be equal to number of frames");

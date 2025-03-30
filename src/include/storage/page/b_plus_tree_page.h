@@ -29,6 +29,9 @@ namespace bustub {
 // define page type enum
 enum class IndexPageType { INVALID_INDEX_PAGE = 0, LEAF_PAGE, INTERNAL_PAGE };
 
+// define neighbor type enum
+enum class NeighborType { PREDECESSOR, SUCCESSOR };
+
 /**
  * Both internal and leaf page are inherited from this page.
  *
@@ -58,16 +61,20 @@ class BPlusTreePage {
   void SetMaxSize(int max_size);
   auto GetMinSize() const -> int;
 
+  auto IsInsertSafe() const -> bool;
+  auto IsRemoveSafe() const -> bool;
+  auto TooFew() const -> bool;
+  auto IsRootRemoveSafe() const -> bool;
   /*
    * TODO(P2): Remove __attribute__((__unused__)) if you intend to use the fields.
    */
  private:
   // Member variables, attributes that both internal and leaf page share
-  IndexPageType page_type_ __attribute__((__unused__));
+  IndexPageType page_type_;
   // Number of key & value pairs in a page
-  int size_ __attribute__((__unused__));
+  int size_;
   // Max number of key & value pairs in a page
-  int max_size_ __attribute__((__unused__));
+  int max_size_;
 };
 
 }  // namespace bustub

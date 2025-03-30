@@ -12,9 +12,8 @@
 
 #pragma once
 
-#include <queue>
 #include <string>
-
+#include <utility>
 #include "storage/page/b_plus_tree_page.h"
 
 namespace bustub {
@@ -51,9 +50,7 @@ class BPlusTreeInternalPage : public BPlusTreePage {
   BPlusTreeInternalPage(const BPlusTreeInternalPage &other) = delete;
 
   void Init(int max_size = INTERNAL_PAGE_SLOT_CNT);
-
   auto KeyAt(int index) const -> KeyType;
-
   void SetKeyAt(int index, const KeyType &key);
 
   /**
@@ -61,8 +58,28 @@ class BPlusTreeInternalPage : public BPlusTreePage {
    * @return The index that corresponds to the specified value
    */
   auto ValueIndex(const ValueType &value) const -> int;
-
   auto ValueAt(int index) const -> ValueType;
+  void SetValueAt(int index, const ValueType &value);
+  auto FindGreaterEqual(const KeyType &key, const KeyComparator &comparator) const -> int;
+  auto KeyExists(const KeyType &key, const KeyComparator &comparator) const -> bool;
+  auto Lookup(const KeyType &key, const KeyComparator &comparator) const -> ValueType;
+
+  struct NeighborInfo {
+    std::optional<ValueType> value_;
+    std::optional<KeyType> separator_key_;
+  };
+  auto GetNeighborInfo(const KeyType &key, const KeyComparator &comparator) const
+      -> std::pair<NeighborInfo, NeighborInfo>;
+  // Insertion Helper methods
+  void SafeInsert(const KeyType &key, const ValueType &value, const KeyComparator &comparator);
+  auto Distribute(BPlusTreeInternalPage *recipient, const KeyType &key, const ValueType &value,
+                  const KeyComparator &comparator) -> KeyType;
+  void ReplaceKey(const KeyType &old_key, const KeyType &new_key, const KeyComparator &comparator);
+  // Removal Helper methods
+  void Remove(const KeyType &key, const KeyComparator &comparator);
+  void Merge(BPlusTreeInternalPage *neighbor, const KeyType &separator_key, const KeyComparator &comparator);
+  auto Redistribute(BPlusTreeInternalPage *neighbor, const KeyType &separator_key, NeighborType neighbor_type,
+                    const KeyComparator &comparator) -> KeyType;
 
   /**
    * @brief For test only, return a string representing all keys in

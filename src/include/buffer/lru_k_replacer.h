@@ -12,6 +12,7 @@
 
 #pragma once
 
+#include <limits>
 #include <mutex>  // NOLINT
 #include <optional>
 #include <set>

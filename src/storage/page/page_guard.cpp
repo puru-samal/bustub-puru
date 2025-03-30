@@ -55,16 +55,17 @@ ReadPageGuard::ReadPageGuard(page_id_t page_id, std::shared_ptr<FrameHeader> fra
  *
  * @param that The other page guard.
  */
-ReadPageGuard::ReadPageGuard(ReadPageGuard &&that) noexcept
-    : page_id_(that.page_id_),
-      frame_(std::move(that.frame_)),
-      replacer_(std::move(that.replacer_)),
-      bpm_latch_(std::move(that.bpm_latch_)),
-      disk_scheduler_(std::move(that.disk_scheduler_)),
-      is_valid_(that.is_valid_),
-      read_latch_(std::move(that.read_latch_)) {
-  // invalidate that guard
-  that.is_valid_ = false;
+ReadPageGuard::ReadPageGuard(ReadPageGuard &&that) noexcept {
+  if (that.is_valid_) {
+    page_id_ = that.page_id_;
+    frame_ = std::move(that.frame_);
+    replacer_ = std::move(that.replacer_);
+    bpm_latch_ = std::move(that.bpm_latch_);
+    disk_scheduler_ = std::move(that.disk_scheduler_);
+    is_valid_ = true;
+    read_latch_ = std::move(that.read_latch_);
+    that.is_valid_ = false;
+  }
 }
 
 /**
@@ -85,19 +86,21 @@ ReadPageGuard::ReadPageGuard(ReadPageGuard &&that) noexcept
  * @return ReadPageGuard& The newly valid `ReadPageGuard`.
  */
 auto ReadPageGuard::operator=(ReadPageGuard &&that) noexcept -> ReadPageGuard & {
-  if (this != &that) {  // Check for self-assignment
-    // Release current resources first
-    this->Drop();
+  if (this == &that) {
+    return *this;
+  }
+  // Release current resources first
+  Drop();
 
+  if (that.is_valid_) {
     // Move resources from 'that' to 'this'
-    this->page_id_ = that.page_id_;
-    this->frame_ = std::move(that.frame_);
-    this->replacer_ = std::move(that.replacer_);
-    this->bpm_latch_ = std::move(that.bpm_latch_);
-    this->disk_scheduler_ = std::move(that.disk_scheduler_);
-    this->is_valid_ = that.is_valid_;
-    this->read_latch_ = std::move(that.read_latch_);
-
+    page_id_ = that.page_id_;
+    frame_ = std::move(that.frame_);
+    replacer_ = std::move(that.replacer_);
+    bpm_latch_ = std::move(that.bpm_latch_);
+    disk_scheduler_ = std::move(that.disk_scheduler_);
+    is_valid_ = true;
+    read_latch_ = std::move(that.read_latch_);
     // Invalidate 'that'
     that.is_valid_ = false;
   }
@@ -119,6 +122,11 @@ auto ReadPageGuard::GetData() const -> const char * {
   BUSTUB_ENSURE(is_valid_, "tried to use an invalid read guard");
   return frame_->GetData();
 }
+
+/**
+ * @brief Returns whether the guard is valid.
+ */
+auto ReadPageGuard::IsValid() const -> bool { return is_valid_; }
 
 /**
  * @brief Returns whether the page is dirty (modified but not flushed to the disk).
@@ -164,6 +172,7 @@ void ReadPageGuard::Flush() {
  */
 void ReadPageGuard::Drop() {
   if (!is_valid_) {
+    // printf("[ReadPageGuard:Drop] Guard is invalid\n");
     return;
   }
 
@@ -174,18 +183,19 @@ void ReadPageGuard::Drop() {
     std::scoped_lock bpm_lock(*bpm_latch_);
     frame_->pin_count_.fetch_sub(1);
     if (frame_->pin_count_.load() == 0) {
+      // printf("[ReadPageGuard:Drop] Frame is evictable: %d\n", page_id_);
       replacer_->SetEvictable(frame_->frame_id_, true);
     }
   }
   // Release resources
+  read_latch_.unlock();
+  read_latch_.release();
   page_id_ = INVALID_PAGE_ID;
   frame_ = nullptr;
   replacer_ = nullptr;
   bpm_latch_ = nullptr;
   disk_scheduler_ = nullptr;
   is_valid_ = false;
-  read_latch_.unlock();
-  read_latch_.release();
 }
 
 /** @brief The destructor for `ReadPageGuard`. This destructor simply calls `Drop()`. */
@@ -234,16 +244,17 @@ WritePageGuard::WritePageGuard(page_id_t page_id, std::shared_ptr<FrameHeader> f
  *
  * @param that The other page guard.
  */
-WritePageGuard::WritePageGuard(WritePageGuard &&that) noexcept
-    : page_id_(that.page_id_),
-      frame_(std::move(that.frame_)),
-      replacer_(std::move(that.replacer_)),
-      bpm_latch_(std::move(that.bpm_latch_)),
-      disk_scheduler_(std::move(that.disk_scheduler_)),
-      is_valid_(that.is_valid_),
-      write_latch_(std::move(that.write_latch_)) {
-  // invalidate that guard
-  that.is_valid_ = false;
+WritePageGuard::WritePageGuard(WritePageGuard &&that) noexcept {
+  if (that.is_valid_) {
+    page_id_ = that.page_id_;
+    frame_ = std::move(that.frame_);
+    replacer_ = std::move(that.replacer_);
+    bpm_latch_ = std::move(that.bpm_latch_);
+    disk_scheduler_ = std::move(that.disk_scheduler_);
+    is_valid_ = true;
+    write_latch_ = std::move(that.write_latch_);
+    that.is_valid_ = false;
+  }
 }
 
 /**
@@ -264,17 +275,20 @@ WritePageGuard::WritePageGuard(WritePageGuard &&that) noexcept
  * @return WritePageGuard& The newly valid `WritePageGuard`.
  */
 auto WritePageGuard::operator=(WritePageGuard &&that) noexcept -> WritePageGuard & {
-  if (this != &that) {  // Check for self-assignment
-    // Release current resources first
-    this->Drop();
+  if (this == &that) {
+    return *this;
+  }
+  // Release current resources first
+  Drop();
 
+  if (that.is_valid_) {
     // Move resources from 'that' to 'this'
-    this->page_id_ = that.page_id_;
-    this->frame_ = std::move(that.frame_);
-    this->replacer_ = std::move(that.replacer_);
-    this->bpm_latch_ = std::move(that.bpm_latch_);
-    this->disk_scheduler_ = std::move(that.disk_scheduler_);
-    this->is_valid_ = that.is_valid_;
+    page_id_ = that.page_id_;
+    frame_ = std::move(that.frame_);
+    replacer_ = std::move(that.replacer_);
+    bpm_latch_ = std::move(that.bpm_latch_);
+    disk_scheduler_ = std::move(that.disk_scheduler_);
+    is_valid_ = that.is_valid_;
     this->write_latch_ = std::move(that.write_latch_);
 
     // Invalidate 'that'
@@ -362,6 +376,8 @@ void WritePageGuard::Drop() {
       replacer_->SetEvictable(frame_->frame_id_, true);
     }
   }
+  write_latch_.unlock();
+  write_latch_.release();
   // Release resources
   page_id_ = INVALID_PAGE_ID;
   frame_ = nullptr;
@@ -369,8 +385,6 @@ void WritePageGuard::Drop() {
   bpm_latch_ = nullptr;
   disk_scheduler_ = nullptr;
   is_valid_ = false;
-  write_latch_.unlock();
-  write_latch_.release();
 }
 
 /** @brief The destructor for `WritePageGuard`. This destructor simply calls `Drop()`. */

@@ -15,9 +15,11 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <random>
 #include <shared_mutex>
+#include <utility>
 #include <vector>
 
 namespace bustub {

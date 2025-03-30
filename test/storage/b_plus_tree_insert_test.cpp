@@ -23,7 +23,7 @@ namespace bustub {
 
 using bustub::DiskManagerUnlimitedMemory;
 
-TEST(BPlusTreeTests, DISABLED_BasicInsertTest) {
+TEST(BPlusTreeTests, _BasicInsertTest) {
   // create KeyComparator and index schema
   auto key_schema = ParseCreateStatement("a bigint");
   GenericComparator<8> comparator(key_schema.get());
@@ -48,15 +48,13 @@ TEST(BPlusTreeTests, DISABLED_BasicInsertTest) {
   auto root_page = root_page_guard.As<BPlusTreePage>();
   ASSERT_NE(root_page, nullptr);
   ASSERT_TRUE(root_page->IsLeafPage());
-
   auto root_as_leaf = root_page_guard.As<BPlusTreeLeafPage<GenericKey<8>, RID, GenericComparator<8>>>();
   ASSERT_EQ(root_as_leaf->GetSize(), 1);
   ASSERT_EQ(comparator(root_as_leaf->KeyAt(0), index_key), 0);
-
   delete bpm;
 }
 
-TEST(BPlusTreeTests, DISABLED_InsertTest1NoIterator) {
+TEST(BPlusTreeTests, _InsertTest1NoIterator) {
   // create KeyComparator and index schema
   auto key_schema = ParseCreateStatement("a bigint");
   GenericComparator<8> comparator(key_schema.get());
@@ -95,7 +93,7 @@ TEST(BPlusTreeTests, DISABLED_InsertTest1NoIterator) {
   delete bpm;
 }
 
-TEST(BPlusTreeTests, DISABLED_InsertTest2) {
+TEST(BPlusTreeTests, _InsertTest2) {
   // create KeyComparator and index schema
   auto key_schema = ParseCreateStatement("a bigint");
   GenericComparator<8> comparator(key_schema.get());

@@ -22,18 +22,16 @@
  */
 #pragma once
 
-#include <algorithm>
 #include <deque>
 #include <filesystem>
 #include <iostream>
 #include <optional>
-#include <queue>
 #include <shared_mutex>
 #include <string>
+#include <tuple>
 #include <vector>
 
 #include "common/config.h"
-#include "common/macros.h"
 #include "storage/index/index_iterator.h"
 #include "storage/page/b_plus_tree_header_page.h"
 #include "storage/page/b_plus_tree_internal_page.h"
@@ -118,6 +116,34 @@ class BPlusTree {
   void BatchOpsFromFile(const std::filesystem::path &file_name);
 
  private:
+  auto CreateNewRootAsLeafPage(BPlusTreeHeaderPage *header_page) -> page_id_t;
+
+  // Operation types
+  enum class Op { INSERT, REMOVE };
+
+  // Page aggregation types for remove operation
+  enum class RemoveOp { MERGE, REDISTRIBUTE };
+
+  // Traverse the B+ tree to find the leaf page with the given key
+  void FindLeafPageWithReadGuard(const KeyType &key, Context &ctx);
+
+  // Traverse the B+ tree to find the leaf page with the given key and write guard
+  void FindLeafPageWithWriteGuard(const KeyType &key, Context &ctx, Op op);
+
+  // Insert the key-value pair into the parent page
+  void InsertInParent(Context &ctx, page_id_t left_page_id, KeyType key, page_id_t right_page_id);
+
+  // Find a valid neighbor page for an unsaferemove operation
+  auto FindNeighborForRemove(Context &ctx, const KeyType &key, BPlusTreePage *current_page)
+      -> std::tuple<WritePageGuard, RemoveOp, KeyType, NeighborType>;
+
+  // Remove the key from the parent page
+  void RemoveFromParent(Context &ctx, KeyType key);
+
+  void FindBeginWithReadGuard(Context &ctx);
+
+  void FindEndWithReadGuard(Context &ctx);
+
   void ToGraph(page_id_t page_id, const BPlusTreePage *page, std::ofstream &out);
 
   void PrintTree(page_id_t page_id, const BPlusTreePage *page);
