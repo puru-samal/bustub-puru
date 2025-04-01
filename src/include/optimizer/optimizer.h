@@ -22,6 +22,7 @@
 #include "catalog/catalog.h"
 #include "concurrency/transaction.h"
 #include "execution/expressions/abstract_expression.h"
+#include "execution/expressions/comparison_expression.h"
 #include "execution/plans/abstract_plan.h"
 
 namespace bustub {
@@ -59,6 +60,10 @@ class Optimizer {
   auto OptimizeOrderByAsIndexScan(const AbstractPlanNodeRef &plan) -> AbstractPlanNodeRef;
 
   auto OptimizeSeqScanAsIndexScan(const AbstractPlanNodeRef &plan) -> AbstractPlanNodeRef;
+
+  auto TryOptimizeSeqScanAsIndexScan(const SchemaRef &output_schema, table_oid_t table_oid,
+                                     const std::vector<std::shared_ptr<IndexInfo>> &indexes,
+                                     const AbstractExpressionRef &predicate) -> std::optional<AbstractPlanNodeRef>;
 
   auto MatchIndex(const std::string &table_name, uint32_t index_key_idx)
       -> std::optional<std::tuple<index_oid_t, std::string>>;

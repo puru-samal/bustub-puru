@@ -42,7 +42,6 @@ void SeqScanExecutor::Init() {
  */
 auto SeqScanExecutor::Next(Tuple *tuple, RID *rid) -> bool {
   if (!table_iter_.has_value() || !table_info_) {
-    printf("[SeqScan] False ..\n");
     return false;
   }
 
