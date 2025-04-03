@@ -56,8 +56,5 @@ class IndexScanExecutor : public AbstractExecutor {
 
   /** The iterator for the result of the index scan for the filter predicate. */
   std::vector<RID>::iterator result_iter_;
-
-  /** Whether the index is scanned. */
-  bool is_scanned_;
 };
 }  // namespace bustub

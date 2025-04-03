@@ -30,10 +30,7 @@ IndexScanExecutor::IndexScanExecutor(ExecutorContext *exec_ctx, const IndexScanP
       table_info_(exec_ctx->GetCatalog()->GetTable(index_info_->table_name_).get()),
       tree_(dynamic_cast<BPlusTreeIndexForTwoIntegerColumn *>(index_info_->index_.get())),
       index_iter_(plan_->filter_predicate_ == nullptr ? tree_->GetBeginIterator()
-                                                      : BPlusTreeIndexIteratorForTwoIntegerColumn()),
-      is_scanned_(false) {}
-
-void IndexScanExecutor::Init() {
+                                                      : BPlusTreeIndexIteratorForTwoIntegerColumn()) {
   // Point lookup
   if (plan_->filter_predicate_ != nullptr) {
     for (const auto &key : plan_->pred_keys_) {
@@ -43,45 +40,30 @@ void IndexScanExecutor::Init() {
       tree_->ScanKey(tuple, &tmp_result, exec_ctx_->GetTransaction());
       result_.insert(result_.end(), tmp_result.begin(), tmp_result.end());
     }
-    result_iter_ = result_.begin();
+  } else {
+    // Ordered scan
+    while (index_iter_ != tree_->GetEndIterator()) {
+      auto rid = (*index_iter_).second;
+      result_.push_back(rid);
+      ++index_iter_;
+    }
   }
 }
 
+void IndexScanExecutor::Init() { result_iter_ = result_.begin(); }
+
 auto IndexScanExecutor::Next(Tuple *tuple, RID *rid) -> bool {
-  if (is_scanned_) {
-    return false;
-  }
-
-  // Point lookup
-  if (plan_->filter_predicate_ != nullptr) {
-    while (result_iter_ != result_.end()) {
-      auto [meta, tup] = table_info_->table_->GetTuple(*result_iter_);
-      *tuple = tup;
-      *rid = *result_iter_;
-      ++result_iter_;
-      // Skip deleted tuples
-      if (meta.is_deleted_) {
-        continue;
-      }
-      return true;
-    }
-    is_scanned_ = true;
-    return false;
-  }
-
-  // Ordered scan
-  while (index_iter_ != tree_->GetEndIterator()) {
-    *rid = (*index_iter_).second;
-    auto [meta, tup] = table_info_->table_->GetTuple(*rid);
+  while (result_iter_ != result_.end()) {
+    auto [meta, tup] = table_info_->table_->GetTuple(*result_iter_);
     *tuple = tup;
-    ++index_iter_;
+    *rid = *result_iter_;
+    ++result_iter_;
     // Skip deleted tuples
     if (meta.is_deleted_) {
       continue;
     }
     return true;
   }
-  is_scanned_ = true;
   return false;
 }
 

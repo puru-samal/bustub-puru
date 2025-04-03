@@ -19,10 +19,10 @@
 #include <utility>
 #include <vector>
 
+#include "binder/table_ref/bound_join_ref.h"
 #include "catalog/catalog.h"
 #include "concurrency/transaction.h"
 #include "execution/expressions/abstract_expression.h"
-#include "execution/expressions/comparison_expression.h"
 #include "execution/plans/abstract_plan.h"
 
 namespace bustub {
@@ -45,6 +45,10 @@ class Optimizer {
   auto OptimizeMergeFilterNLJ(const AbstractPlanNodeRef &plan) -> AbstractPlanNodeRef;
 
   auto OptimizeNLJAsHashJoin(const AbstractPlanNodeRef &plan) -> AbstractPlanNodeRef;
+
+  auto TryOptimizeNLJAsHashJoin(const SchemaRef &output_schema, AbstractPlanNodeRef left, AbstractPlanNodeRef right,
+                                JoinType join_type, const AbstractExpressionRef &predicate)
+      -> std::optional<AbstractPlanNodeRef>;
 
   auto OptimizeNLJAsIndexJoin(const AbstractPlanNodeRef &plan) -> AbstractPlanNodeRef;
 

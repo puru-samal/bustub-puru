@@ -11,29 +11,84 @@ cmake \
   -DCMAKE_BUILD_TYPE=Debug \
   ..
 
-# Array of test names
-tests=(
-    #"b_plus_tree_insert_test"
-    #"b_plus_tree_sequential_scale_test"
-    #"b_plus_tree_delete_test"
-    #"b_plus_tree_concurrent_test"
+# Build sqllogictest
+echo "Building sqllogictest..."
+if ! make -j$(nproc) sqllogictest; then
+    echo "Failed to build sqllogictest"
+    exit 1
+fi
+
+# Array of SQL test files
+sql_tests=(
+    "../test/sql/p3.01-seqscan.slt"
+    "../test/sql/p3.02-insert.slt"
+    "../test/sql/p3.03-update.slt"
+    "../test/sql/p3.04-delete.slt"
+    "../test/sql/p3.05-index-scan-btree.slt"
+    "../test/sql/p3.06-empty-table.slt"
+    "../test/sql/p3.07-simple-agg.slt"
+    "../test/sql/p3.08-group-agg-1.slt"
+    "../test/sql/p3.09-group-agg-2.slt"
+    "../test/sql/p3.10-simple-join.slt"
+    "../test/sql/p3.11-multi-way-join.slt"
+    "../test/sql/p3.12-repeat-execute.slt"
+    "../test/sql/p3.13-nested-index-join.slt"
+    "../test/sql/p3.14-hash-join.slt"
+    "../test/sql/p3.15-multi-way-hash-join.slt"
 )
 
-# Build and run each test
-for test in "${tests[@]}"; do
-    echo "Building $test..."
-    if ! make "$test" -j$(nproc); then
-        echo "Failed to build $test"
-        exit 1
+# Initialize counters and arrays for test tracking
+total_tests=${#sql_tests[@]}
+passed_tests=0
+failed_tests=0
+failed_test_names=()
+
+echo "Starting test suite execution..."
+echo "Total tests to run: $total_tests"
+echo "------------------------"
+
+# Run each SQL test
+for test in "${sql_tests[@]}"; do
+    printf "Running test: %s ... " "$(basename "$test")"
+    if ./bin/bustub-sqllogictest "$test" --verbose > test.log 2>&1; then
+        echo "[PASSED]"
+        ((passed_tests++))
+        #echo "Passed log:"
+        #cat test.log
+    else
+        echo "[FAILED]"
+        ((failed_tests++))
+        failed_test_names+=("$test")
+        echo "Error log:"
+        cat test.log
     fi
-    
-    echo "Running $test..."
-    if ! "./test/$test"; then
-        echo "$test failed!"
-        exit 1
-    fi
-    echo "$test completed successfully"
-    echo "------------------------"
 done
 
-echo "All tests completed successfully!"
+# Clean up temporary log file
+rm -f test.log
+
+# Print summary
+echo ""
+echo "========================"
+echo "Test Execution Summary:"
+echo "------------------------"
+echo "Total tests:  $total_tests"
+echo "Passed:      $passed_tests"
+echo "Failed:      $failed_tests"
+
+# If there were failures, list them
+if [ ${#failed_test_names[@]} -ne 0 ]; then
+    echo ""
+    echo "Failed tests:"
+    for failed in "${failed_test_names[@]}"; do
+        echo "- $(basename "$failed")"
+    done
+    exit 1
+fi
+
+echo ""
+if [ $passed_tests -eq $total_tests ]; then
+    echo "All tests passed successfully!"
+else
+    echo "Some tests failed. Please check the output above."
+fi
