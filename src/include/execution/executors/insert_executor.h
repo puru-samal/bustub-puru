@@ -13,7 +13,7 @@
 #pragma once
 
 #include <memory>
-
+#include <vector>
 #include "execution/executor_context.h"
 #include "execution/executors/abstract_executor.h"
 #include "execution/plans/insert_plan.h"
@@ -48,7 +48,7 @@ class InsertExecutor : public AbstractExecutor {
   std::unique_ptr<AbstractExecutor> child_executor_;
 
   /** Whether the insert has been executed */
-  bool is_inserted_;
+  bool is_inserted_{false};
 
   /** The index infos */
   std::vector<std::shared_ptr<IndexInfo>> index_infos_;

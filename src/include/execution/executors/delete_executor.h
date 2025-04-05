@@ -13,9 +13,7 @@
 #pragma once
 
 #include <memory>
-#include <utility>
 #include <vector>
-
 #include "execution/executor_context.h"
 #include "execution/executors/abstract_executor.h"
 #include "execution/plans/delete_plan.h"
@@ -53,6 +51,6 @@ class DeleteExecutor : public AbstractExecutor {
   std::vector<std::shared_ptr<IndexInfo>> index_infos_;
 
   /** Whether the delete has been executed */
-  bool is_deleted_;
+  bool is_deleted_{false};
 };
 }  // namespace bustub

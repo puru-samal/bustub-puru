@@ -13,7 +13,7 @@
 #pragma once
 
 #include <memory>
-
+#include <vector>
 #include "execution/executor_context.h"
 #include "execution/executors/abstract_executor.h"
 #include "execution/plans/update_plan.h"
@@ -53,6 +53,6 @@ class UpdateExecutor : public AbstractExecutor {
   std::vector<std::shared_ptr<IndexInfo>> index_infos_;
 
   /** Whether the update has been executed */
-  bool is_updated_;
+  bool is_updated_{false};
 };
 }  // namespace bustub

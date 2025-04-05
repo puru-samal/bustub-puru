@@ -161,35 +161,31 @@ auto BufferPoolManager::NewPage() -> page_id_t {
  */
 auto BufferPoolManager::DeletePage(page_id_t page_id) -> bool {
   std::scoped_lock latch(*bpm_latch_);
-
-  // Case 1: Page is not in memory
   auto it = page_table_.find(page_id);
-  if (it == page_table_.end()) {
-    return true;
-  }
+  // Case 1: Page is in memory
+  if (!(it == page_table_.end())) {
+    frame_id_t frame_id = it->second;
+    auto frame = frames_[frame_id];
+    BUSTUB_ASSERT(frame->page_id_ == page_id, "Page ID mismatch");
+    auto pin_count = frame->pin_count_.load();
+    if (pin_count > 0) {
+      return false;
+    }
 
-  // Case 2: Page is in memory
-  frame_id_t frame_id = it->second;
-  auto frame = frames_[frame_id];
-  BUSTUB_ASSERT(frame->page_id_ == page_id, "Page ID mismatch");
-  auto pin_count = frame->pin_count_.load();
-  if (pin_count > 0) {
-    return false;
-  }
+    // Write dirty page to disk
+    if (frame->is_dirty_) {
+      WriteDirtyFrameToDisk(frame);
+    }
 
-  // Write dirty page to disk
-  if (frame->is_dirty_) {
-    WriteDirtyFrameToDisk(frame);
+    // Reset and reuse the frame
+    frame->Reset();
+    page_table_.erase(it);
+    free_frames_.push_back(frame_id);
+    replacer_->Remove(frame_id);
+    BUSTUB_ASSERT(page_table_.size() + free_frames_.size() == num_frames_,
+                  "Page table size + free frames size must be equal to number of frames");
   }
-
-  // Reset and reuse the frame
-  frame->Reset();
-  page_table_.erase(it);
-  free_frames_.push_back(frame_id);
-  replacer_->Remove(frame_id);
   disk_scheduler_->DeallocatePage(page_id);
-  BUSTUB_ASSERT(page_table_.size() + free_frames_.size() == num_frames_,
-                "Page table size + free frames size must be equal to number of frames");
   return true;
 }
 

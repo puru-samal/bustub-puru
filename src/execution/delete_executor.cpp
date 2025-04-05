@@ -10,10 +10,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include <memory>
-#include "common/macros.h"
-
 #include "execution/executors/delete_executor.h"
+#include <memory>
 
 namespace bustub {
 
@@ -28,10 +26,9 @@ DeleteExecutor::DeleteExecutor(ExecutorContext *exec_ctx, const DeletePlanNode *
     : AbstractExecutor(exec_ctx),
       plan_(plan),
       table_info_(exec_ctx->GetCatalog()->GetTable(plan_->GetTableOid()).get()),
-      child_executor_(std::move(child_executor)),
-      is_deleted_(false) {
+      child_executor_(std::move(child_executor)) {
   // Get the index infos
-  if (table_info_) {
+  if (table_info_ != nullptr) {
     index_infos_ = exec_ctx->GetCatalog()->GetTableIndexes(table_info_->name_);
   }
 }
@@ -48,7 +45,7 @@ void DeleteExecutor::Init() { child_executor_->Init(); }
  * NOTE: DeleteExecutor::Next() returns true with the number of deleted rows produced only once.
  */
 auto DeleteExecutor::Next([[maybe_unused]] Tuple *tuple, RID *rid) -> bool {
-  if (is_deleted_ || !table_info_) {
+  if (is_deleted_ || table_info_ == nullptr) {
     return false;
   }
 

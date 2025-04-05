@@ -35,6 +35,9 @@ sql_tests=(
     "../test/sql/p3.13-nested-index-join.slt"
     "../test/sql/p3.14-hash-join.slt"
     "../test/sql/p3.15-multi-way-hash-join.slt"
+    "../test/sql/p3.16-sort-limit.slt"
+    "../test/sql/p3.18-integration-1.slt"
+    "../test/sql/p3.19-integration-2.slt"
 )
 
 # Initialize counters and arrays for test tracking

@@ -10,10 +10,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include <memory>
-#include "common/macros.h"
-
 #include "execution/executors/insert_executor.h"
+#include <memory>
 
 namespace bustub {
 
@@ -28,10 +26,9 @@ InsertExecutor::InsertExecutor(ExecutorContext *exec_ctx, const InsertPlanNode *
     : AbstractExecutor(exec_ctx),
       plan_(plan),
       table_info_(exec_ctx->GetCatalog()->GetTable(plan_->GetTableOid()).get()),
-      child_executor_(std::move(child_executor)),
-      is_inserted_(false) {
+      child_executor_(std::move(child_executor)) {
   // Get the index infos
-  if (table_info_) {
+  if (table_info_ != nullptr) {
     index_infos_ = exec_ctx->GetCatalog()->GetTableIndexes(table_info_->name_);
   }
 }
@@ -49,7 +46,7 @@ void InsertExecutor::Init() { child_executor_->Init(); }
  * NOTE: InsertExecutor::Next() returns true with number of inserted rows produced only once.
  */
 auto InsertExecutor::Next([[maybe_unused]] Tuple *tuple, RID *rid) -> bool {
-  if (is_inserted_ || !table_info_) {
+  if (is_inserted_ || table_info_ == nullptr) {
     return false;
   }
 

@@ -29,7 +29,7 @@ SeqScanExecutor::SeqScanExecutor(ExecutorContext *exec_ctx, const SeqScanPlanNod
 /** Initialize the sequential scan */
 void SeqScanExecutor::Init() {
   // Create an iterator for the table
-  if (table_info_) {
+  if (table_info_ != nullptr) {
     table_iter_.emplace(table_info_->table_->MakeIterator());
   }
 }
@@ -41,7 +41,7 @@ void SeqScanExecutor::Init() {
  * @return `true` if a tuple was produced, `false` if there are no more tuples
  */
 auto SeqScanExecutor::Next(Tuple *tuple, RID *rid) -> bool {
-  if (!table_iter_.has_value() || !table_info_) {
+  if (!table_iter_.has_value() || table_info_ == nullptr) {
     return false;
   }
 

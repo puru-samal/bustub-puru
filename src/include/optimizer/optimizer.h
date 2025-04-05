@@ -46,9 +46,9 @@ class Optimizer {
 
   auto OptimizeNLJAsHashJoin(const AbstractPlanNodeRef &plan) -> AbstractPlanNodeRef;
 
-  auto TryOptimizeNLJAsHashJoin(const SchemaRef &output_schema, AbstractPlanNodeRef left, AbstractPlanNodeRef right,
-                                JoinType join_type, const AbstractExpressionRef &predicate)
-      -> std::optional<AbstractPlanNodeRef>;
+  auto TryOptimizeNLJAsHashJoin(const SchemaRef &output_schema, const AbstractPlanNodeRef &left,
+                                const AbstractPlanNodeRef &right, JoinType join_type,
+                                const AbstractExpressionRef &predicate) -> std::optional<AbstractPlanNodeRef>;
 
   auto OptimizeNLJAsIndexJoin(const AbstractPlanNodeRef &plan) -> AbstractPlanNodeRef;
 

@@ -81,42 +81,4 @@ class HashJoinPlanNode : public AbstractPlanNode {
   auto PlanNodeToString() const -> std::string override;
 };
 
-/** HashJoinKey represents a key in an hash join operation */
-struct HashJoinKey {
-  /** The join-by values */
-  std::vector<Value> join_bys_;
-
-  /**
-   * Compares two hash join keys for equality.
-   * @param other the other hash join key to be compared with
-   * @return `true` if both hash join keys have equivalent join-by expressions, `false` otherwise
-   */
-  auto operator==(const HashJoinKey &other) const -> bool {
-    for (uint32_t i = 0; i < other.join_bys_.size(); i++) {
-      if (join_bys_[i].CompareEquals(other.join_bys_[i]) != CmpBool::CmpTrue) {
-        return false;
-      }
-    }
-    return true;
-  }
-};
-
 }  // namespace bustub
-
-namespace std {
-
-/** Implements std::hash on HashJoinKey */
-template <>
-struct hash<bustub::HashJoinKey> {
-  auto operator()(const bustub::HashJoinKey &hash_join_key) const -> std::size_t {
-    size_t curr_hash = 0;
-    for (const auto &key : hash_join_key.join_bys_) {
-      if (!key.IsNull()) {
-        curr_hash = bustub::HashUtil::CombineHashes(curr_hash, bustub::HashUtil::HashValue(&key));
-      }
-    }
-    return curr_hash;
-  }
-};
-
-}  // namespace std

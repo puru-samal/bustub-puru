@@ -10,23 +10,16 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include <algorithm>
 #include <memory>
-#include "catalog/column.h"
 #include "catalog/schema.h"
-#include "common/exception.h"
 #include "common/macros.h"
 #include "execution/expressions/column_value_expression.h"
 #include "execution/expressions/comparison_expression.h"
-#include "execution/expressions/constant_value_expression.h"
 #include "execution/expressions/logic_expression.h"
 #include "execution/plans/abstract_plan.h"
-#include "execution/plans/filter_plan.h"
 #include "execution/plans/hash_join_plan.h"
 #include "execution/plans/nested_loop_join_plan.h"
-#include "execution/plans/projection_plan.h"
 #include "optimizer/optimizer.h"
-#include "type/type_id.h"
 
 namespace bustub {
 
@@ -70,8 +63,8 @@ auto Optimizer::OptimizeNLJAsHashJoin(const AbstractPlanNodeRef &plan) -> Abstra
   return optimized_plan;
 }
 
-auto Optimizer::TryOptimizeNLJAsHashJoin(const SchemaRef &output_schema, AbstractPlanNodeRef left,
-                                         AbstractPlanNodeRef right, JoinType join_type,
+auto Optimizer::TryOptimizeNLJAsHashJoin(const SchemaRef &output_schema, const AbstractPlanNodeRef &left,
+                                         const AbstractPlanNodeRef &right, JoinType join_type,
                                          const AbstractExpressionRef &predicate) -> std::optional<AbstractPlanNodeRef> {
   BUSTUB_ASSERT(predicate != nullptr, "Predicate should not be nullptr");
 
