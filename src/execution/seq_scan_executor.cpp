@@ -13,7 +13,8 @@
 #include "execution/executors/seq_scan_executor.h"
 #include <cstdio>
 #include "common/macros.h"
-
+#include "concurrency/transaction_manager.h"
+#include "execution/execution_common.h"
 namespace bustub {
 
 /**
@@ -49,16 +50,31 @@ auto SeqScanExecutor::Next(Tuple *tuple, RID *rid) -> bool {
     auto [meta, curr_tuple] = table_iter_->GetTuple();
     RID curr_rid = table_iter_->GetRID();
 
-    // Update output parameters
-    *tuple = curr_tuple;
-    *rid = curr_rid;
-
     ++(table_iter_.value());
 
-    // Skip deleted tuples
-    if (meta.is_deleted_) {
+    auto txn_mgr = exec_ctx_->GetTransactionManager();
+    auto txn = exec_ctx_->GetTransaction();
+    auto [base_meta, base_tuple, undo_link] = GetTupleAndUndoLink(txn_mgr, table_info_->table_.get(), curr_rid);
+
+    // Collect undo logs to reconstruct the tuple at our read timestamp
+    auto undo_logs = CollectUndoLogs(curr_rid, base_meta, base_tuple, undo_link, txn, txn_mgr);
+
+    // If no valid version exists at our timestamp, skip this tuple
+    if (!undo_logs.has_value()) {
       continue;
     }
+
+    // Reconstruct the tuple using collected undo logs
+    auto reconstructed_tuple = ReconstructTuple(&table_info_->schema_, base_tuple, base_meta, undo_logs.value());
+
+    // Skip if tuple was deleted at our timestamp
+    if (!reconstructed_tuple.has_value()) {
+      continue;
+    }
+
+    // Update output parameters with reconstructed tuple
+    *tuple = reconstructed_tuple.value();
+    *rid = curr_rid;
 
     // Skip tuples that don't satisfy the predicate if it exists
     if (plan_->filter_predicate_) {

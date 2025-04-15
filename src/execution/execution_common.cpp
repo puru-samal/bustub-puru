@@ -83,7 +83,45 @@ auto GenerateSortKey(const Tuple &tuple, const std::vector<OrderBy> &order_bys, 
  */
 auto ReconstructTuple(const Schema *schema, const Tuple &base_tuple, const TupleMeta &base_meta,
                       const std::vector<UndoLog> &undo_logs) -> std::optional<Tuple> {
-  UNIMPLEMENTED("not implemented");
+  // Start with the base tuple's Values
+  std::vector<Value> values;
+  for (size_t i = 0; i < schema->GetColumnCount(); i++) {
+    values.push_back(base_tuple.GetValue(schema, i));
+  }
+  bool is_deleted = base_meta.is_deleted_;
+
+  // Apply each undo log in order (most recent to oldest)
+  for (const auto &log : undo_logs) {
+    is_deleted = log.is_deleted_;
+
+    // If the undo log is a deletion, skip the rest of the loop
+    if (is_deleted) {
+      continue;
+    }
+
+    // First collect modified attributes and create partial schema
+    std::vector<uint32_t> modified_attrs;
+    modified_attrs.reserve(log.modified_fields_.size());
+    for (size_t i = 0; i < log.modified_fields_.size(); i++) {
+      if (log.modified_fields_[i]) {
+        modified_attrs.push_back(i);
+      }
+    }
+    auto partial_schema = Schema::CopySchema(schema, modified_attrs);
+
+    // Then process the modifications in a single pass
+    for (size_t i = 0; i < modified_attrs.size(); i++) {
+      values[modified_attrs[i]] = log.tuple_.GetValue(&partial_schema, i);
+    }
+  }
+
+  // If the final state is deleted, return nullopt
+  if (is_deleted) {
+    return std::nullopt;
+  }
+
+  // Create and return the reconstructed tuple
+  return Tuple(values, schema);
 }
 
 /**
@@ -100,7 +138,45 @@ auto ReconstructTuple(const Schema *schema, const Tuple &base_tuple, const Tuple
  */
 auto CollectUndoLogs(RID rid, const TupleMeta &base_meta, const Tuple &base_tuple, std::optional<UndoLink> undo_link,
                      Transaction *txn, TransactionManager *txn_mgr) -> std::optional<std::vector<UndoLog>> {
-  UNIMPLEMENTED("not implemented");
+  std::vector<UndoLog> undo_logs;
+
+  // Case 1: The base tuple is the most recent version relative to the transaction
+  if (base_meta.ts_ <= txn->GetReadTs()) {
+    return undo_logs;
+  }
+
+  // Case 2: The transaction is reading it's own write
+  if (base_meta.ts_ == txn->GetTransactionTempTs()) {
+    return undo_logs;
+  }
+
+  // Case 3: if undo_link doesn't exist, it means the tuple doesn't exist at this timestamp
+  if (!undo_link.has_value()) {
+    return std::nullopt;
+  }
+
+  // Case 4: The base tuple is newer than the transaction or has been modified by another uncommitted transaction
+  // Need to traverse the version chain and collect ALL undo logs up to read timestamp
+  auto current_link = undo_link.value();
+  bool found_valid_version = false;
+
+  while (current_link.IsValid()) {
+    auto log = txn_mgr->GetUndoLog(current_link);
+    undo_logs.push_back(log);
+
+    if (log.ts_ <= txn->GetReadTs()) {
+      found_valid_version = true;
+      break;
+    }
+    current_link = log.prev_version_;
+  }
+
+  // If we never found a valid version, the tuple didn't exist at this timestamp
+  if (!found_valid_version) {
+    return std::nullopt;
+  }
+
+  return undo_logs;
 }
 
 /**
@@ -136,28 +212,61 @@ auto GenerateUpdatedUndoLog(const Schema *schema, const Tuple *base_tuple, const
 
 void TxnMgrDbg(const std::string &info, TransactionManager *txn_mgr, const TableInfo *table_info,
                TableHeap *table_heap) {
-  // always use stderr for printing logs...
   fmt::println(stderr, "debug_hook: {}", info);
 
-  fmt::println(
-      stderr,
-      "You see this line of text because you have not implemented `TxnMgrDbg`. You should do this once you have "
-      "finished task 2. Implementing this helper function will save you a lot of time for debugging in later tasks.");
+  auto iter = table_heap->MakeIterator();
+  while (!iter.IsEnd()) {
+    auto [meta, tuple] = iter.GetTuple();
+    auto rid = iter.GetRID();
+    auto undo_link = txn_mgr->GetUndoLink(rid);
 
-  // We recommend implementing this function as traversing the table heap and print the version chain. An example output
-  // of our reference solution:
-  //
-  // debug_hook: before verify scan
-  // RID=0/0 ts=txn8 tuple=(1, <NULL>, <NULL>)
-  //   txn8@0 (2, _, _) ts=1
-  // RID=0/1 ts=3 tuple=(3, <NULL>, <NULL>)
-  //   txn5@0 <del> ts=2
-  //   txn3@0 (4, <NULL>, <NULL>) ts=1
-  // RID=0/2 ts=4 <del marker> tuple=(<NULL>, <NULL>, <NULL>)
-  //   txn7@0 (5, <NULL>, <NULL>) ts=3
-  // RID=0/3 ts=txn6 <del marker> tuple=(<NULL>, <NULL>, <NULL>)
-  //   txn6@0 (6, <NULL>, <NULL>) ts=2
-  //   txn3@1 (7, _, _) ts=1
+    // Print base tuple info
+    std::string ts_str =
+        meta.ts_ >= TXN_START_ID ? fmt::format("txn{}", meta.ts_ - TXN_START_ID) : std::to_string(meta.ts_);
+    if (meta.is_deleted_) {
+      fmt::println(stderr, "RID={}/{} ts={} <del marker> tuple={}", rid.GetPageId(), rid.GetSlotNum(), ts_str,
+                   tuple.ToString(&table_info->schema_));
+    } else {
+      fmt::println(stderr, "RID={}/{} ts={} tuple={}", rid.GetPageId(), rid.GetSlotNum(), ts_str,
+                   tuple.ToString(&table_info->schema_));
+    }
+
+    if (undo_link.has_value()) {
+      // Print version chain
+      auto current_link = undo_link.value();
+      while (current_link.IsValid()) {
+        auto log = txn_mgr->GetUndoLog(current_link);
+
+        // For version chain entries, print the tuple with modified fields only
+        std::string tuple_str;
+        if (log.is_deleted_) {
+          tuple_str = "<del>";
+        } else {
+          // Create partial schema for only modified fields
+          std::vector<uint32_t> modified_attrs;
+          for (size_t i = 0; i < log.modified_fields_.size(); i++) {
+            if (log.modified_fields_[i]) {
+              modified_attrs.push_back(i);
+            }
+          }
+          auto partial_schema = Schema::CopySchema(&table_info->schema_, modified_attrs);
+          tuple_str = log.tuple_.ToString(&partial_schema);
+          // Replace unmodified fields with "_"
+          for (size_t i = 0; i < log.modified_fields_.size(); i++) {
+            if (!log.modified_fields_[i]) {
+              tuple_str = tuple_str.substr(0, tuple_str.find_last_of(')')) + ", _)";
+            }
+          }
+        }
+
+        fmt::println(stderr, "  txn{}@{} {} ts={}", current_link.prev_txn_ - TXN_START_ID, current_link.prev_log_idx_,
+                     tuple_str, log.ts_);
+        current_link = log.prev_version_;
+      }
+    }
+
+    ++iter;
+  }
 }
 
 }  // namespace bustub
