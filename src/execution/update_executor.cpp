@@ -11,7 +11,11 @@
 //===----------------------------------------------------------------------===//
 
 #include "execution/executors/update_executor.h"
+#include <cstdio>
 #include <memory>
+#include "concurrency/transaction.h"
+#include "concurrency/transaction_manager.h"
+#include "execution/execution_common.h"
 
 namespace bustub {
 
@@ -34,7 +38,16 @@ UpdateExecutor::UpdateExecutor(ExecutorContext *exec_ctx, const UpdatePlanNode *
 }
 
 /** Initialize the update */
-void UpdateExecutor::Init() { child_executor_->Init(); }
+void UpdateExecutor::Init() {
+  child_executor_->Init();
+  Tuple tuple;
+  RID rid;
+  while (child_executor_->Next(&tuple, &rid)) {
+    update_tuples_.emplace_back(tuple, rid);
+  }
+  update_iter_ = update_tuples_.begin();
+  is_updated_ = false;
+}
 
 /**
  * Yield the next tuple from the update.
@@ -49,54 +62,74 @@ auto UpdateExecutor::Next([[maybe_unused]] Tuple *tuple, RID *rid) -> bool {
     return false;
   }
 
-  int32_t updated_rows = 0;
-  Tuple old_tuple;
-  RID old_rid;
+  auto txn = exec_ctx_->GetTransaction();
+  auto txn_mgr = exec_ctx_->GetTransactionManager();
 
-  // Process each tuple from the child executor
-  while (child_executor_->Next(&old_tuple, &old_rid)) {
-    // Mark the old tuple as deleted
-    TupleMeta delete_meta{0, true};
-    table_info_->table_->UpdateTupleMeta(delete_meta, old_rid);
+  while (update_iter_ != update_tuples_.end()) {
+    auto [child_tuple, child_rid] = *update_iter_;
+    update_iter_++;
+
+    // Get the tuple metadata, tuple, and undo link from the table heap
+    auto [table_meta, table_tuple, table_undo_link] =
+        GetTupleAndUndoLink(txn_mgr, table_info_->table_.get(), child_rid);
+
+    // Check for write-write conflicts
+    if (table_meta.ts_ > txn->GetReadTs() && table_meta.ts_ != txn->GetTransactionTempTs()) {
+      txn->SetTainted();
+      throw ExecutionException("Write-write conflict detected in update");
+    }
 
     // Delete old tuple from all indexes
     for (auto &index_info : index_infos_) {
       auto old_key =
-          old_tuple.KeyFromTuple(table_info_->schema_, index_info->key_schema_, index_info->index_->GetKeyAttrs());
-      index_info->index_->DeleteEntry(old_key, old_rid, exec_ctx_->GetTransaction());
+          child_tuple.KeyFromTuple(table_info_->schema_, index_info->key_schema_, index_info->index_->GetKeyAttrs());
+      index_info->index_->DeleteEntry(old_key, child_rid, exec_ctx_->GetTransaction());
     }
 
     // Generate updated tuple values
     std::vector<Value> values;
-    values.reserve(child_executor_->GetOutputSchema().GetColumnCount());
+    values.reserve(table_info_->schema_.GetColumnCount());
     for (const auto &target_expr : plan_->target_expressions_) {
-      values.push_back(target_expr->Evaluate(&old_tuple, child_executor_->GetOutputSchema()));
+      values.push_back(target_expr->Evaluate(&child_tuple, child_executor_->GetOutputSchema()));
     }
 
-    // Create and insert updated tuple
-    Tuple update_tuple{values, &child_executor_->GetOutputSchema()};
-    TupleMeta update_meta{0, false};
-    auto insert_rid = table_info_->table_->InsertTuple(update_meta, update_tuple, exec_ctx_->GetLockManager(),
-                                                       exec_ctx_->GetTransaction(), table_info_->oid_);
+    // Create updated tuple
+    *tuple = Tuple{values, &table_info_->schema_};
+    *rid = child_rid;
 
-    // Update all indexes with new tuple if insert succeeded
-    if (insert_rid.has_value()) {
-      for (auto &index_info : index_infos_) {
-        auto new_key =
-            update_tuple.KeyFromTuple(table_info_->schema_, index_info->key_schema_, index_info->index_->GetKeyAttrs());
-        index_info->index_->InsertEntry(new_key, insert_rid.value(), exec_ctx_->GetTransaction());
+    if (table_meta.ts_ == txn->GetTransactionTempTs()) {
+      // Self modification
+      // Update the tuple in the table heap
+      TupleMeta new_meta{txn->GetTransactionTempTs(), false};
+      table_info_->table_->UpdateTupleInPlace(new_meta, *tuple, *rid);
+      // Update existing undo log in the current transaction if it exists
+      if (table_undo_link.has_value()) {
+        auto log_idx = table_undo_link.value().prev_log_idx_;
+        auto prev_log = txn_mgr->GetUndoLog(table_undo_link.value());
+        auto undo_log = GenerateUpdatedUndoLog(&table_info_->schema_, &table_tuple, tuple, prev_log);
+        txn->ModifyUndoLog(log_idx, undo_log);
       }
-      updated_rows++;
+    } else {
+      // Not self modification: Link a new undo log
+      auto prev_undo_link = table_undo_link.has_value() ? table_undo_link.value() : UndoLink{};
+      auto undo_log = GenerateNewUndoLog(&table_info_->schema_, &table_tuple, tuple, table_meta.ts_, prev_undo_link);
+      auto new_undo_link = txn->AppendUndoLog(undo_log);
+      UpdateTupleAndUndoLink(txn_mgr, *rid, std::optional<UndoLink>(new_undo_link), table_info_->table_.get(), txn,
+                             TupleMeta{txn->GetTransactionTempTs(), false}, *tuple, nullptr);
     }
-  }
 
-  // Yield the number of rows updated
-  std::vector<Value> values{};
-  values.reserve(GetOutputSchema().GetColumnCount());
-  values.emplace_back(TypeId::INTEGER, updated_rows);
-  *tuple = Tuple(values, &GetOutputSchema());
+    // Update all indexes with new tuple if update succeeded
+    for (auto &index_info : index_infos_) {
+      auto new_key =
+          tuple->KeyFromTuple(table_info_->schema_, index_info->key_schema_, index_info->index_->GetKeyAttrs());
+      index_info->index_->InsertEntry(new_key, child_rid, exec_ctx_->GetTransaction());
+    }
+    // Add to write set
+    txn->AppendWriteSet(table_info_->oid_, *rid);
+    return true;
+  }
   is_updated_ = true;
-  return true;
+  return false;
 }
 
 }  // namespace bustub

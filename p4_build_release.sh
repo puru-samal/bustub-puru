@@ -1,14 +1,14 @@
 #!/bin/bash
 
 # Create and enter build directory
-mkdir -p build
-cd build
+mkdir -p build_rel
+cd build_rel
 
 # Configure CMake in Debug mode with Clang 14
 cmake \
   -DCMAKE_C_COMPILER=/opt/homebrew/opt/llvm@14/bin/clang-14 \
   -DCMAKE_CXX_COMPILER=/opt/homebrew/opt/llvm@14/bin/clang++ \
-  -DCMAKE_BUILD_TYPE=Debug \
+  -DCMAKE_BUILD_TYPE=Release \
   ..
 
 # Array of test names

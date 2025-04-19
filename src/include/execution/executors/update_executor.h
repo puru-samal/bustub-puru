@@ -13,6 +13,7 @@
 #pragma once
 
 #include <memory>
+#include <utility>
 #include <vector>
 #include "execution/executor_context.h"
 #include "execution/executors/abstract_executor.h"
@@ -49,10 +50,16 @@ class UpdateExecutor : public AbstractExecutor {
   /** The child executor to obtain value from */
   std::unique_ptr<AbstractExecutor> child_executor_;
 
+  /** The tuples from child executor to be updated */
+  std::vector<std::pair<Tuple, RID>> update_tuples_;
+
+  /** The iterator of the update tuples */
+  std::vector<std::pair<Tuple, RID>>::iterator update_iter_;
+
   /** The index infos */
   std::vector<std::shared_ptr<IndexInfo>> index_infos_;
 
-  /** Whether the update has been executed */
+  /** Whether the update has finished */
   bool is_updated_{false};
 };
 }  // namespace bustub

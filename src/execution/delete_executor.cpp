@@ -12,6 +12,9 @@
 
 #include "execution/executors/delete_executor.h"
 #include <memory>
+#include "concurrency/transaction.h"
+#include "concurrency/transaction_manager.h"
+#include "execution/execution_common.h"
 
 namespace bustub {
 
@@ -52,12 +55,41 @@ auto DeleteExecutor::Next([[maybe_unused]] Tuple *tuple, RID *rid) -> bool {
   int32_t deleted_rows = 0;
   Tuple delete_tuple;
   RID delete_rid;
-  TupleMeta delete_meta{0, true};
+  auto txn = exec_ctx_->GetTransaction();
+  auto txn_mgr = exec_ctx_->GetTransactionManager();
 
   // Process each tuple from the child executor
   while (child_executor_->Next(&delete_tuple, &delete_rid)) {
-    // Mark the old tuple as deleted
-    table_info_->table_->UpdateTupleMeta(delete_meta, delete_rid);
+    // Get current tuple metadata
+    auto [table_meta, table_tuple, table_undo_link] =
+        GetTupleAndUndoLink(txn_mgr, table_info_->table_.get(), delete_rid);
+
+    // Check for write-write conflicts
+    if (table_meta.ts_ > txn->GetReadTs() && table_meta.ts_ != txn->GetTransactionTempTs()) {
+      txn->SetTainted();
+      throw ExecutionException("Write-write conflict detected in delete");
+    }
+
+    if (table_meta.ts_ == txn->GetTransactionTempTs()) {
+      // Self modification
+      // Delete the tuple in the table heap
+      TupleMeta new_meta{txn->GetTransactionTempTs(), true};
+      table_info_->table_->UpdateTupleInPlace(new_meta, table_tuple, delete_rid);
+      // Update existing undo log in the current transaction if it exists
+      if (table_undo_link.has_value()) {
+        auto log_idx = table_undo_link.value().prev_log_idx_;
+        auto prev_log = txn_mgr->GetUndoLog(table_undo_link.value());
+        auto undo_log = GenerateUpdatedUndoLog(&table_info_->schema_, &table_tuple, nullptr, prev_log);
+        txn->ModifyUndoLog(log_idx, undo_log);
+      }
+    } else {
+      // Not self modification: Link a new undo log
+      auto prev_undo_link = table_undo_link.has_value() ? table_undo_link.value() : UndoLink{};
+      auto undo_log = GenerateNewUndoLog(&table_info_->schema_, &table_tuple, nullptr, table_meta.ts_, prev_undo_link);
+      auto new_undo_link = txn->AppendUndoLog(undo_log);
+      UpdateTupleAndUndoLink(txn_mgr, delete_rid, std::optional<UndoLink>(new_undo_link), table_info_->table_.get(),
+                             txn, TupleMeta{txn->GetTransactionTempTs(), true}, table_tuple, nullptr);
+    }
 
     // Delete old tuple from all indexes
     for (auto &index_info : index_infos_) {
@@ -65,7 +97,8 @@ auto DeleteExecutor::Next([[maybe_unused]] Tuple *tuple, RID *rid) -> bool {
           delete_tuple.KeyFromTuple(table_info_->schema_, index_info->key_schema_, index_info->index_->GetKeyAttrs());
       index_info->index_->DeleteEntry(delete_key, delete_rid, exec_ctx_->GetTransaction());
     }
-
+    // Add to write set
+    txn->AppendWriteSet(table_info_->oid_, delete_rid);
     deleted_rows++;
   }
 

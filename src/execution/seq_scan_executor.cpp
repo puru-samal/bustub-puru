@@ -11,8 +11,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "execution/executors/seq_scan_executor.h"
-#include <cstdio>
-#include "common/macros.h"
 #include "concurrency/transaction_manager.h"
 #include "execution/execution_common.h"
 namespace bustub {
@@ -46,14 +44,14 @@ auto SeqScanExecutor::Next(Tuple *tuple, RID *rid) -> bool {
     return false;
   }
 
+  auto txn_mgr = exec_ctx_->GetTransactionManager();
+  auto txn = exec_ctx_->GetTransaction();
+
   while (!table_iter_->IsEnd()) {
-    auto [meta, curr_tuple] = table_iter_->GetTuple();
     RID curr_rid = table_iter_->GetRID();
 
     ++(table_iter_.value());
 
-    auto txn_mgr = exec_ctx_->GetTransactionManager();
-    auto txn = exec_ctx_->GetTransaction();
     auto [base_meta, base_tuple, undo_link] = GetTupleAndUndoLink(txn_mgr, table_info_->table_.get(), curr_rid);
 
     // Collect undo logs to reconstruct the tuple at our read timestamp

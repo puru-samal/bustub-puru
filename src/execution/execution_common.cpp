@@ -14,9 +14,11 @@
 
 #include "catalog/catalog.h"
 #include "common/macros.h"
+#include "common/util/string_util.h"
 #include "concurrency/transaction_manager.h"
 #include "fmt/core.h"
 #include "storage/table/table_heap.h"
+#include "storage/table/tuple.h"
 
 namespace bustub {
 
@@ -133,8 +135,8 @@ auto ReconstructTuple(const Schema *schema, const Tuple &base_tuple, const Tuple
  * @param undo_link The undo link to the latest undo log.
  * @param txn The transaction.
  * @param txn_mgr The transaction manager.
- * @return An optional vector of undo logs to pass to ReconstructTuple(). std::nullopt if the tuple did not exist at the
- * time.
+ * @return An optional vector of undo logs to pass to ReconstructTuple(). std::nullopt if the tuple did not exist at
+ * the time.
  */
 auto CollectUndoLogs(RID rid, const TupleMeta &base_meta, const Tuple &base_tuple, std::optional<UndoLink> undo_link,
                      Transaction *txn, TransactionManager *txn_mgr) -> std::optional<std::vector<UndoLog>> {
@@ -192,11 +194,48 @@ auto CollectUndoLogs(RID rid, const TupleMeta &base_meta, const Tuple &base_tupl
  */
 auto GenerateNewUndoLog(const Schema *schema, const Tuple *base_tuple, const Tuple *target_tuple, timestamp_t ts,
                         UndoLink prev_version) -> UndoLog {
-  UNIMPLEMENTED("not implemented");
+  // If the base tuple is nullptr, it means the tuple is deleted
+  if (base_tuple == nullptr) {
+    if (target_tuple == nullptr) {
+      throw std::runtime_error("[GenerateNewUndoLog] Invalid state: both base and target tuples are nullptr");
+    }
+    // Insert into a deleted tuple case
+    std::vector<bool> modified_fields(schema->GetColumnCount(), true);
+    return UndoLog{true, std::move(modified_fields), Tuple{}, ts, prev_version};
+  }
+
+  // If the target tuple is nullptr, it means the tuple is deleted
+  if (target_tuple == nullptr) {
+    std::vector<bool> modified_fields(schema->GetColumnCount(), true);
+    return UndoLog{false, std::move(modified_fields), *base_tuple, ts, prev_version};
+  }
+
+  // For update/delete, create a new undo log
+  std::vector<bool> modified_fields;
+  std::vector<Value> values;
+  std::vector<uint32_t> modified_attrs;
+
+  // Compare each column
+  for (uint32_t i = 0; i < schema->GetColumnCount(); i++) {
+    auto base_value = base_tuple->GetValue(schema, i);
+    auto target_value = target_tuple->GetValue(schema, i);
+
+    if (base_value.CompareExactlyEquals(target_value)) {
+      modified_fields.push_back(false);
+    } else {
+      modified_fields.push_back(true);
+      modified_attrs.push_back(i);
+      values.push_back(base_value);
+    }
+  }
+
+  auto partial_schema = Schema::CopySchema(schema, modified_attrs);
+  return UndoLog{false, std::move(modified_fields), Tuple(values, &partial_schema), ts, prev_version};
 }
 
 /**
- * @brief Generate the updated undo log to replace the old one, whereas the tuple is already modified by this txn once.
+ * @brief Generate the updated undo log to replace the old one, whereas the tuple is already modified by this txn
+ * once.
  *
  * @param schema The schema of the table.
  * @param base_tuple The base tuple before the update, the one retrieved from the table heap. nullptr if the tuple is
@@ -207,7 +246,49 @@ auto GenerateNewUndoLog(const Schema *schema, const Tuple *base_tuple, const Tup
  */
 auto GenerateUpdatedUndoLog(const Schema *schema, const Tuple *base_tuple, const Tuple *target_tuple,
                             const UndoLog &log) -> UndoLog {
-  UNIMPLEMENTED("not implemented");
+  // Handle insert or delete cases
+  if (base_tuple == nullptr || target_tuple == nullptr || log.is_deleted_) {
+    if (base_tuple == nullptr && target_tuple == nullptr) {
+      throw std::runtime_error("[GenerateUpdatedUndoLog] Invalid state: both base and target tuples are nullptr");
+    }
+    return {log};
+  }
+
+  // First collect modified attributes and create the old partial schema
+  std::vector<uint32_t> old_modified_attrs;
+  old_modified_attrs.reserve(log.modified_fields_.size());
+  for (size_t i = 0; i < log.modified_fields_.size(); i++) {
+    if (log.modified_fields_[i]) {
+      old_modified_attrs.push_back(i);
+    }
+  }
+  auto old_partial_schema = Schema::CopySchema(schema, old_modified_attrs);
+  uint32_t old_value_idx = 0;
+
+  std::vector<bool> modified_fields;
+  std::vector<Value> values;
+  std::vector<uint32_t> modified_attrs;
+
+  for (uint32_t i = 0; i < schema->GetColumnCount(); i++) {
+    if (log.modified_fields_[i]) {
+      modified_fields.push_back(true);
+      modified_attrs.push_back(i);
+      values.push_back(log.tuple_.GetValue(&old_partial_schema, old_value_idx));
+      old_value_idx++;
+    } else {
+      auto base_value = base_tuple->GetValue(schema, i);
+      auto target_value = target_tuple->GetValue(schema, i);
+      if (base_value.CompareExactlyEquals(target_value)) {
+        modified_fields.push_back(false);
+      } else {
+        modified_fields.push_back(true);
+        modified_attrs.push_back(i);
+        values.push_back(base_tuple->GetValue(schema, i));
+      }
+    }
+  }
+  auto partial_schema = Schema::CopySchema(schema, modified_attrs);
+  return UndoLog{false, std::move(modified_fields), Tuple(values, &partial_schema), log.ts_, log.prev_version_};
 }
 
 void TxnMgrDbg(const std::string &info, TransactionManager *txn_mgr, const TableInfo *table_info,
@@ -235,14 +316,23 @@ void TxnMgrDbg(const std::string &info, TransactionManager *txn_mgr, const Table
       // Print version chain
       auto current_link = undo_link.value();
       while (current_link.IsValid()) {
-        auto log = txn_mgr->GetUndoLog(current_link);
+        auto optional_log = txn_mgr->GetUndoLogOptional(current_link);
+        if (!optional_log.has_value()) {
+          fmt::println(stderr, "  txn{}@{} <garbage collected>", current_link.prev_txn_ - TXN_START_ID,
+                       current_link.prev_log_idx_);
+          break;  // Stop traversing if we hit a garbage collected log
+        }
 
+        const auto &log = optional_log.value();
         // For version chain entries, print the tuple with modified fields only
         std::string tuple_str;
         if (log.is_deleted_) {
           tuple_str = "<del>";
         } else {
-          // Create partial schema for only modified fields
+          std::vector<std::string> field_strs;
+          field_strs.reserve(log.modified_fields_.size());
+
+          // Create partial schema for modified fields
           std::vector<uint32_t> modified_attrs;
           for (size_t i = 0; i < log.modified_fields_.size(); i++) {
             if (log.modified_fields_[i]) {
@@ -250,13 +340,19 @@ void TxnMgrDbg(const std::string &info, TransactionManager *txn_mgr, const Table
             }
           }
           auto partial_schema = Schema::CopySchema(&table_info->schema_, modified_attrs);
-          tuple_str = log.tuple_.ToString(&partial_schema);
-          // Replace unmodified fields with "_"
+
+          // Get values using partial schema
+          size_t modified_idx = 0;
           for (size_t i = 0; i < log.modified_fields_.size(); i++) {
-            if (!log.modified_fields_[i]) {
-              tuple_str = tuple_str.substr(0, tuple_str.find_last_of(')')) + ", _)";
+            if (log.modified_fields_[i]) {
+              field_strs.push_back(log.tuple_.GetValue(&partial_schema, modified_idx).ToString());
+              modified_idx++;
+            } else {
+              field_strs.emplace_back("_");
             }
           }
+
+          tuple_str = "(" + StringUtil::Join(field_strs, ", ") + ")";
         }
 
         fmt::println(stderr, "  txn{}@{} {} ts={}", current_link.prev_txn_ - TXN_START_ID, current_link.prev_log_idx_,
