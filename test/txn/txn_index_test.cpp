@@ -95,7 +95,7 @@ TEST(TxnIndexTest, IndexInsertTest) {  // NOLINT
                                 }));
 }
 
-TEST(TxnIndexTest, DISABLED_InsertDeleteTest) {  // NOLINT
+TEST(TxnIndexTest, InsertDeleteTest) {  // NOLINT
   const std::string query = "SELECT * FROM maintable";
 
   auto bustub = std::make_unique<BusTubInstance>();
@@ -127,7 +127,7 @@ TEST(TxnIndexTest, DISABLED_InsertDeleteTest) {  // NOLINT
                                     IntResult{{1, 0}, {2, 0}, {3, 0}, {4, 0}}));
 }
 
-TEST(TxnIndexTest, DISABLED_UpdateTest) {  // NOLINT
+TEST(TxnIndexTest, UpdateTest) {  // NOLINT
   const std::string query = "SELECT * FROM maintable";
 
   const auto prepare =
@@ -198,7 +198,6 @@ TEST(TxnIndexTest, DISABLED_UpdateTest) {  // NOLINT
                              }));
     WithTxn(txn3, CommitTxn(*bustub, _var, _txn));
     TxnMgrDbg("after commit", bustub->txn_manager_.get(), table_info.get(), table_info->table_.get());
-
     auto txn4 = BeginTxn(*bustub, "txn4");
     WithTxn(txn4, QueryShowResult(*bustub, _var, _txn, query,
                                   IntResult{
@@ -224,7 +223,7 @@ TEST(TxnIndexTest, DISABLED_UpdateTest) {  // NOLINT
   // hidden tests...
 }
 
-TEST(GradingTxnIndexTest, DISABLED_IndexUpdateConflictTest) {  // NOLINT
+TEST(GradingTxnIndexTest, IndexUpdateConflictTest) {  // NOLINT
   const std::string query = "SELECT * FROM maintable";
 
   auto bustub = std::make_unique<BusTubInstance>();
@@ -264,6 +263,7 @@ TEST(TxnIndexTest, DISABLED_UpdatePrimaryKeyTest) {  // NOLINT
   TxnMgrDbg("after txn1 insert", bustub->txn_manager_.get(), table_info.get(), table_info->table_.get());
   auto txn2 = BeginTxn(*bustub, "txn2");
   WithTxn(txn2, ExecuteTxn(*bustub, _var, _txn, "UPDATE maintable SET col1 = col1 + 1"));
+  TxnMgrDbg("after txn2 partial update", bustub->txn_manager_.get(), table_info.get(), table_info->table_.get());
   WithTxn(txn2, QueryShowResult(*bustub, _var, _txn, query, IntResult{{2, 0}, {3, 0}, {4, 0}, {5, 0}}));
   WithTxn(txn2, QueryIndex(*bustub, _var, _txn, query, "col1", std::vector<int>{1, 2, 3, 4, 5},
                            IntResult{{}, {2, 0}, {3, 0}, {4, 0}, {5, 0}}));

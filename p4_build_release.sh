@@ -16,8 +16,8 @@ tests=(
     "txn_timestamp_test"
     "txn_scan_test"
     "txn_executor_test"
-    "txn_index_test"
     "txn_index_concurrent_test"
+    "txn_index_test"
 )
 
 # Build and run each test

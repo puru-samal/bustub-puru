@@ -13,6 +13,8 @@
 #include "execution/executors/update_executor.h"
 #include <cstdio>
 #include <memory>
+#include <vector>
+#include "common/macros.h"
 #include "concurrency/transaction.h"
 #include "concurrency/transaction_manager.h"
 #include "execution/execution_common.h"
@@ -65,6 +67,15 @@ auto UpdateExecutor::Next([[maybe_unused]] Tuple *tuple, RID *rid) -> bool {
   auto txn = exec_ctx_->GetTransaction();
   auto txn_mgr = exec_ctx_->GetTransactionManager();
 
+  // Check for write-write conflict
+  auto check_conflict = [txn](const TupleMeta &meta, const Tuple &tuple, RID rid, std::optional<UndoLink> undo_link) {
+    if (meta.ts_ > txn->GetReadTs() && meta.ts_ != txn->GetTransactionTempTs()) {
+      txn->SetTainted();
+      return false;
+    }
+    return true;
+  };
+
   while (update_iter_ != update_tuples_.end()) {
     auto [child_tuple, child_rid] = *update_iter_;
     update_iter_++;
@@ -80,11 +91,13 @@ auto UpdateExecutor::Next([[maybe_unused]] Tuple *tuple, RID *rid) -> bool {
     }
 
     // Delete old tuple from all indexes
+    /*
     for (auto &index_info : index_infos_) {
       auto old_key =
           child_tuple.KeyFromTuple(table_info_->schema_, index_info->key_schema_, index_info->index_->GetKeyAttrs());
       index_info->index_->DeleteEntry(old_key, child_rid, exec_ctx_->GetTransaction());
     }
+    */
 
     // Generate updated tuple values
     std::vector<Value> values;
@@ -97,25 +110,41 @@ auto UpdateExecutor::Next([[maybe_unused]] Tuple *tuple, RID *rid) -> bool {
     *tuple = Tuple{values, &table_info_->schema_};
     *rid = child_rid;
 
-    if (table_meta.ts_ == txn->GetTransactionTempTs()) {
-      // Self modification
-      // Update the tuple in the table heap
-      TupleMeta new_meta{txn->GetTransactionTempTs(), false};
-      table_info_->table_->UpdateTupleInPlace(new_meta, *tuple, *rid);
-      // Update existing undo log in the current transaction if it exists
+    std::optional<UndoLink> new_undo_link = std::nullopt;
+    if (table_meta.ts_ != txn->GetTransactionTempTs()) {
+      // Not self modification - create new undo log
+      // If table_undo_link is not null, use it as the previous undo link
+      // Create a new undo log and append it to the transaction
+      // Link the new undo link to the table heap later
+      auto prev_undo_link = table_undo_link.has_value() ? table_undo_link.value() : UndoLink{};
+      auto undo_log = GenerateNewUndoLog(&table_info_->schema_, &table_tuple, tuple, table_meta.ts_, prev_undo_link);
+      new_undo_link = txn->AppendUndoLog(undo_log);
+    } else {
+      // Self modification - update the undo log in the current transaction
+      // if one exists
       if (table_undo_link.has_value()) {
+        BUSTUB_ASSERT(table_undo_link.value().prev_txn_ == txn->GetTransactionId(),
+                      "Undo link is not from the current transaction");
         auto log_idx = table_undo_link.value().prev_log_idx_;
         auto prev_log = txn_mgr->GetUndoLog(table_undo_link.value());
         auto undo_log = GenerateUpdatedUndoLog(&table_info_->schema_, &table_tuple, tuple, prev_log);
         txn->ModifyUndoLog(log_idx, undo_log);
+        new_undo_link = UndoLink{txn->GetTransactionId(), log_idx};
       }
-    } else {
-      // Not self modification: Link a new undo log
-      auto prev_undo_link = table_undo_link.has_value() ? table_undo_link.value() : UndoLink{};
-      auto undo_log = GenerateNewUndoLog(&table_info_->schema_, &table_tuple, tuple, table_meta.ts_, prev_undo_link);
-      auto new_undo_link = txn->AppendUndoLog(undo_log);
-      UpdateTupleAndUndoLink(txn_mgr, *rid, std::optional<UndoLink>(new_undo_link), table_info_->table_.get(), txn,
-                             TupleMeta{txn->GetTransactionTempTs(), false}, *tuple, nullptr);
+    }
+
+    // Update the tuple in the table heap and the undo link
+    auto update_succeeded =
+        UpdateTupleAndUndoLink(txn_mgr, *rid, new_undo_link, table_info_->table_.get(), txn,
+                               TupleMeta{txn->GetTransactionTempTs(), false}, *tuple, check_conflict);
+
+    if (!update_succeeded) {
+      throw ExecutionException("Write-write conflict detected in update");
+    }
+
+    if (table_meta.ts_ != txn->GetTransactionTempTs()) {
+      // Add to write set
+      txn->AppendWriteSet(table_info_->oid_, *rid);
     }
 
     // Update all indexes with new tuple if update succeeded
@@ -124,8 +153,6 @@ auto UpdateExecutor::Next([[maybe_unused]] Tuple *tuple, RID *rid) -> bool {
           tuple->KeyFromTuple(table_info_->schema_, index_info->key_schema_, index_info->index_->GetKeyAttrs());
       index_info->index_->InsertEntry(new_key, child_rid, exec_ctx_->GetTransaction());
     }
-    // Add to write set
-    txn->AppendWriteSet(table_info_->oid_, *rid);
     return true;
   }
   is_updated_ = true;

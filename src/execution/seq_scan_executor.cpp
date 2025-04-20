@@ -54,25 +54,38 @@ auto SeqScanExecutor::Next(Tuple *tuple, RID *rid) -> bool {
 
     auto [base_meta, base_tuple, undo_link] = GetTupleAndUndoLink(txn_mgr, table_info_->table_.get(), curr_rid);
 
-    // Collect undo logs to reconstruct the tuple at our read timestamp
-    auto undo_logs = CollectUndoLogs(curr_rid, base_meta, base_tuple, undo_link, txn, txn_mgr);
+    if (base_meta.ts_ <= txn->GetReadTs() || base_meta.ts_ == txn->GetTransactionTempTs()) {
+      // Read by current transaction or another uncommitted transaction: Read the tuple in the table heap
 
-    // If no valid version exists at our timestamp, skip this tuple
-    if (!undo_logs.has_value()) {
-      continue;
+      // Skip if tuple was deleted at our timestamp
+      if (base_meta.is_deleted_) {
+        continue;
+      }
+
+      *tuple = base_tuple;
+      *rid = curr_rid;
+
+    } else {
+      // Collect undo logs to reconstruct the tuple at our read timestamp
+      auto undo_logs = CollectUndoLogs(curr_rid, base_meta, base_tuple, undo_link, txn, txn_mgr);
+
+      // If no valid version exists at our timestamp, skip this tuple
+      if (!undo_logs.has_value()) {
+        continue;
+      }
+
+      // Reconstruct the tuple using collected undo logs
+      auto reconstructed_tuple = ReconstructTuple(&table_info_->schema_, base_tuple, base_meta, undo_logs.value());
+
+      // Skip if tuple was deleted at our timestamp
+      if (!reconstructed_tuple.has_value()) {
+        continue;
+      }
+
+      // Update output parameters with reconstructed tuple
+      *tuple = reconstructed_tuple.value();
+      *rid = curr_rid;
     }
-
-    // Reconstruct the tuple using collected undo logs
-    auto reconstructed_tuple = ReconstructTuple(&table_info_->schema_, base_tuple, base_meta, undo_logs.value());
-
-    // Skip if tuple was deleted at our timestamp
-    if (!reconstructed_tuple.has_value()) {
-      continue;
-    }
-
-    // Update output parameters with reconstructed tuple
-    *tuple = reconstructed_tuple.value();
-    *rid = curr_rid;
 
     // Skip tuples that don't satisfy the predicate if it exists
     if (plan_->filter_predicate_) {
