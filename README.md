@@ -1,6 +1,6 @@
 <img src="logo/bustub-whiteborder.svg" alt="BusTub Logo" height="200">
 
------------------
+---
 
 [![Build Status](https://github.com/cmu-db/bustub/actions/workflows/cmake.yml/badge.svg)](https://github.com/cmu-db/bustub/actions/workflows/cmake.yml)
 
@@ -16,6 +16,125 @@ We make the autograder for each assignment available to non-CMU students on Grad
 
 **WARNING: IF YOU ARE A STUDENT OUTSIDE CMU, DO NOT MAKE YOUR SOLUTION PUBLICLY AVAILABLE, AND DO SUBMIT YOUR OWN WORK. OTHERWISE, YOU WILL BE BANNED FROM USING THE AUTOGRADER.** Thank you for creating a fair learning environment.
 
+## Implemented Components
+
+BusTub is a disk-oriented database management system that implements core database functionality including buffer pool management, indexing, query execution, and concurrency control. The system is designed to be thread-safe and supports concurrent operations while maintaining data consistency. Below are the key components that I have implemented:
+
+### Project 1: Buffer Pool Manager
+
+[Project Specification](https://15445.courses.cs.cmu.edu/spring2025/project1/)
+
+- **LRU-K Replacement Policy**
+
+  - Thread-safe LRU-K page replacement algorithm
+  - Tracks page usage history with k-distance
+  - Evicts pages based on backward k-distance
+  - Maintains access history for each frame
+  - Supports frame pinning and unpinning
+
+- **Disk Scheduler**
+
+  - Asynchronous I/O operations management
+  - Background worker thread for request processing
+  - Thread-safe request queue implementation
+  - Efficient disk request scheduling
+  - Support for read and write operations
+
+- **Buffer Pool Manager**
+  - Thread-safe page caching system
+  - Page allocation and deallocation
+  - Page eviction with LRU-K policy
+  - Disk I/O operations coordination
+  - Frame management and pinning
+
+### Project 2: B+Tree Index
+
+[Project Specification](https://15445.courses.cs.cmu.edu/spring2025/project2/)
+
+- **B+Tree Index**
+  - Thread-safe B+Tree implementation
+  - Support for:
+    - Insert, delete, and lookup operations
+    - Range scans with iterator interface
+    - Concurrent operations with proper locking
+    - Leaf node merging and redistribution
+    - Internal node splitting and merging
+  - Efficient key-value storage
+  - Support for variable-length keys
+  - Proper page management and buffer pool integration
+
+### Project 3: Query Execution
+
+[Project Specification](https://15445.courses.cs.cmu.edu/spring2025/project3/)
+
+- **Query Execution Engine**
+  - **Sequential Scan**
+    - Table heap traversal
+    - Predicate filtering
+    - Projection support
+  - **Index Scan**
+    - B+Tree index traversal
+    - Range scan support
+    - Key-based lookups
+  - **Join Executors**
+    - Nested Loop Join
+    - Hash Join
+  - **Aggregation**
+    - Group by operations
+    - Aggregate functions
+  - **Sort**
+    - External merge sort
+    - Top-N optimization
+  - **Projection**
+    - Column selection
+    - Expression evaluation
+  - **Filter**
+    - Predicate evaluation
+    - Boolean expression support
+
+### Project 4: Concurrency Control
+
+[Project Specification](https://15445.courses.cs.cmu.edu/spring2025/project4/)
+
+- **Transaction Management**
+
+  - Timestamp allocation for read and commit operations
+  - MVCC (Multi-Version Concurrency Control) protocol
+  - Snapshot isolation level implementation
+  - Transaction state tracking and management
+  - Undo log management
+  - Garbage collection support
+
+- **Storage Format**
+
+  - Version chains for tuple history
+  - Undo logs for transaction rollback
+  - Tuple metadata management
+  - Version visibility tracking
+  - Efficient storage layout
+
+- **MVCC Executors**
+
+  - **Sequential Scan**
+    - Version visibility checking
+    - Snapshot isolation support
+  - **Index Scan**
+    - Version-aware lookups
+    - Concurrent access handling
+  - **Modification Executors**
+    - Insert
+    - Update
+    - Delete
+    - Version chain management
+    - Undo log generation
+
+- **Primary Key Index**
+  - Unique constraint enforcement
+  - Version-aware lookups
+  - Concurrent access handling
+  - Index maintenance during updates
+  - Proper version chain integration
+
 ## Cloning this Repository
 
 The following instructions are adapted from the Github documentation on [duplicating a repository](https://docs.github.com/en/github/creating-cloning-and-archiving-repositories/creating-a-repository-on-github/duplicating-a-repository). The procedure below walks you through creating a private BusTub repository that you can use for development.
@@ -26,21 +145,26 @@ The following instructions are adapted from the Github documentation on [duplica
    $ git clone --bare https://github.com/cmu-db/bustub.git bustub-public
    ```
 3. Next, [mirror](https://git-scm.com/docs/git-push#Documentation/git-push.txt---mirror) the public BusTub repository to your own private BusTub repository. Suppose your GitHub name is `student` and your repository name is `bustub-private`. The procedure for mirroring the repository is then:
+
    ```console
    $ cd bustub-public
-   
+
    # If you pull / push over HTTPS
    $ git push https://github.com/student/bustub-private.git master
 
    # If you pull / push over SSH
    $ git push git@github.com:student/bustub-private.git master
    ```
+
    This copies everything in the public BusTub repository to your own private repository. You can now delete your local clone of the public repository:
+
    ```console
    $ cd ..
    $ rm -rf bustub-public
    ```
+
 4. Clone your private repository to your development machine:
+
    ```console
    # If you pull / push over HTTPS
    $ git clone https://github.com/student/bustub-private.git
@@ -48,6 +172,7 @@ The following instructions are adapted from the Github documentation on [duplica
    # If you pull / push over SSH
    $ git clone git@github.com:student/bustub-private.git
    ```
+
 5. Add the public BusTub repository as a second remote. This allows you to retrieve changes from the CMU-DB repository and merge them with your solution throughout the semester:
    ```console
    $ git remote add public https://github.com/cmu-db/bustub.git
@@ -103,6 +228,7 @@ Debug mode:
 $ cmake -DCMAKE_BUILD_TYPE=Debug ..
 $ make -j`nproc`
 ```
+
 This enables [AddressSanitizer](https://github.com/google/sanitizers) by default.
 
 If you want to use other sanitizers,
